@@ -16,11 +16,10 @@ public static class PipelineBuilderExtensions
     /// <returns>A new PipelineBuilder with the transformed value.</returns>
     public static PipelineBuilder<T> Map<T>(this PipelineBuilder<T> builder, Func<T, T> transform)
     {
-        return builder.Then(async (input, ct) =>
+        return builder.Then((input, ct) =>
         {
-            await Task.CompletedTask;
             var transformed = transform(input);
-            return FlowResult<T>.Success(transformed);
+            return Task.FromResult(FlowResult<T>.Success(transformed));
         });
     }
 }

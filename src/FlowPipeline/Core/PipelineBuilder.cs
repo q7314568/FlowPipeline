@@ -1,5 +1,4 @@
 using FlowPipeline.Abstractions;
-using FlowPipeline.Core;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FlowPipeline.Core;
