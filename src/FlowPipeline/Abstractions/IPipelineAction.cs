@@ -1,29 +1,29 @@
 namespace FlowPipeline.Abstractions;
 
 /// <summary>
-/// Represents a pipeline action that performs a side effect with input of type TIn.
+/// 表示一個執行副作用並接受 TIn 型別輸入的 Pipeline 動作。
 /// </summary>
-/// <typeparam name="TIn">The input type.</typeparam>
+/// <typeparam name="TIn">輸入型別。</typeparam>
 public interface IPipelineAction<TIn>
 {
     /// <summary>
-    /// Executes the action asynchronously with the provided input.
+    /// 使用提供的輸入以非同步方式執行動作。
     /// </summary>
-    /// <param name="input">The input value.</param>
-    /// <param name="ct">The cancellation token.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <param name="input">輸入值。</param>
+    /// <param name="ct">取消權杖。</param>
+    /// <returns>代表非同步操作的工作。</returns>
     Task ExecuteAsync(TIn input, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Represents a pipeline action that performs a side effect without input.
+/// 表示一個執行副作用但不接受輸入的 Pipeline 動作。
 /// </summary>
 public interface IPipelineAction
 {
     /// <summary>
-    /// Executes the action asynchronously.
+    /// 以非同步方式執行動作。
     /// </summary>
-    /// <param name="ct">The cancellation token.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <param name="ct">取消權杖。</param>
+    /// <returns>代表非同步操作的工作。</returns>
     Task ExecuteAsync(CancellationToken ct = default);
 }
