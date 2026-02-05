@@ -1,7 +1,7 @@
 namespace FlowPipeline.Core;
 
 /// <summary>
-/// 表示不需要輸入或輸出值的 Pipeline 所使用的單元型別。
+/// 不需要輸入或輸出值的 Pipeline 所使用的單元型別。
 /// </summary>
 public readonly struct Unit
 {

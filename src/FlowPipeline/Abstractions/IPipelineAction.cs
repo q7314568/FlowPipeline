@@ -1,7 +1,7 @@
 namespace FlowPipeline.Abstractions;
 
 /// <summary>
-/// 表示一個執行副作用並接受 TIn 型別輸入的 Pipeline 動作。
+/// 定義執行副作用並接受 TIn 型別輸入的 Pipeline 動作介面。
 /// </summary>
 /// <typeparam name="TIn">輸入型別。</typeparam>
 public interface IPipelineAction<TIn>
@@ -16,7 +16,7 @@ public interface IPipelineAction<TIn>
 }
 
 /// <summary>
-/// 表示一個執行副作用但不接受輸入的 Pipeline 動作。
+/// 定義執行副作用但不接受輸入的 Pipeline 動作介面。
 /// </summary>
 public interface IPipelineAction
 {

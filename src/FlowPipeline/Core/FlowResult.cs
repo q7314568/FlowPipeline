@@ -1,7 +1,7 @@
 namespace FlowPipeline.Core;
 
 /// <summary>
-/// 表示 Pipeline 操作的結果，可以是成功並帶有值，或是失敗並帶有錯誤。
+/// Pipeline 操作的結果，可以是成功並帶有值，或是失敗並帶有錯誤。
 /// </summary>
 /// <typeparam name="T">成功值的型別。</typeparam>
 public class FlowResult<T>

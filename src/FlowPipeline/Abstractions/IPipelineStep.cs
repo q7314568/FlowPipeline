@@ -3,7 +3,7 @@ using FlowPipeline.Core;
 namespace FlowPipeline.Abstractions;
 
 /// <summary>
-/// 表示一個將 TIn 型別輸入轉換為 TOut 型別輸出的 Pipeline 步驟。
+/// 定義將 TIn 型別輸入轉換為 TOut 型別輸出的 Pipeline 步驟介面。
 /// </summary>
 /// <typeparam name="TIn">輸入型別。</typeparam>
 /// <typeparam name="TOut">輸出型別。</typeparam>
