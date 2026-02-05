@@ -1,9 +1,9 @@
 namespace FlowPipeline.Core;
 
 /// <summary>
-/// Represents the result of a pipeline operation that can either succeed with a value or fail with an error.
+/// Pipeline 操作的結果，可以是成功並帶有值，或是失敗並帶有錯誤。
 /// </summary>
-/// <typeparam name="T">The type of the success value.</typeparam>
+/// <typeparam name="T">成功值的型別。</typeparam>
 public class FlowResult<T>
 {
     private FlowResult(bool isSuccess, T? value, string? errorMessage, string? errorCode, PipelineError? errorPayload)
@@ -16,59 +16,59 @@ public class FlowResult<T>
     }
 
     /// <summary>
-    /// Gets a value indicating whether the operation was successful.
+    /// 取得一個值，指出操作是否成功。
     /// </summary>
     public bool IsSuccess { get; }
 
     /// <summary>
-    /// Gets the success value if the operation succeeded.
+    /// 若操作成功，取得成功的值。
     /// </summary>
     public T? Value { get; }
 
     /// <summary>
-    /// Gets the error message if the operation failed.
+    /// 若操作失敗，取得錯誤訊息。
     /// </summary>
     public string? ErrorMessage { get; }
 
     /// <summary>
-    /// Gets the error code if the operation failed.
+    /// 若操作失敗，取得錯誤代碼。
     /// </summary>
     public string? ErrorCode { get; }
 
     /// <summary>
-    /// Gets the detailed error payload if the operation failed.
+    /// 若操作失敗，取得詳細的錯誤承載資料。
     /// </summary>
     public PipelineError? ErrorPayload { get; }
 
     /// <summary>
-    /// Creates a successful result with the specified value.
+    /// 建立一個帶有指定值的成功結果。
     /// </summary>
-    /// <param name="value">The success value.</param>
-    /// <returns>A successful FlowResult containing the value.</returns>
+    /// <param name="value">成功的值。</param>
+    /// <returns>包含該值的成功 FlowResult。</returns>
     public static FlowResult<T> Success(T value)
     {
         return new FlowResult<T>(true, value, null, null, null);
     }
 
     /// <summary>
-    /// Creates a failed result with the specified error message and optional error code.
+    /// 建立一個帶有指定錯誤訊息和選用錯誤代碼的失敗結果。
     /// </summary>
-    /// <param name="message">The error message.</param>
-    /// <param name="errorCode">The optional error code.</param>
-    /// <returns>A failed FlowResult containing the error information.</returns>
+    /// <param name="message">錯誤訊息。</param>
+    /// <param name="errorCode">選用的錯誤代碼。</param>
+    /// <returns>包含錯誤資訊的失敗 FlowResult。</returns>
     public static FlowResult<T> Fail(string message, string? errorCode = null)
     {
         return new FlowResult<T>(false, default, message, errorCode, null);
     }
 
     /// <summary>
-    /// Creates a failed result with the specified error message, error payload, and optional error code.
+    /// 建立一個帶有指定錯誤訊息、錯誤承載資料和選用錯誤代碼的失敗結果。
     /// </summary>
-    /// <typeparam name="TError">The type of the error payload.</typeparam>
-    /// <param name="message">The error message.</param>
-    /// <param name="error">The error payload.</param>
-    /// <param name="errorCode">The optional error code.</param>
-    /// <returns>A failed FlowResult containing the error information.</returns>
+    /// <typeparam name="TError">錯誤承載資料的型別。</typeparam>
+    /// <param name="message">錯誤訊息。</param>
+    /// <param name="error">錯誤承載資料。</param>
+    /// <param name="errorCode">選用的錯誤代碼。</param>
+    /// <returns>包含錯誤資訊的失敗 FlowResult。</returns>
     public static FlowResult<T> Fail<TError>(string message, TError error, string? errorCode = null)
         where TError : PipelineError
     {
