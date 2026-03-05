@@ -150,6 +150,78 @@ public class PipelineBuilder<TIn>
     }
 
     /// <summary>
+    /// 使用帶有參數的步驟實例新增一個步驟到 Pipeline。
+    /// </summary>
+    /// <typeparam name="TOut">步驟的輸出型別。</typeparam>
+    /// <typeparam name="TParam">額外參數的型別。</typeparam>
+    /// <param name="stepInstance">要執行的帶參數步驟實例。</param>
+    /// <param name="parameter">傳入步驟的額外參數。</param>
+    /// <returns>下一階段的 PipelineBuilder。</returns>
+    public PipelineBuilder<TOut> ThenWithParam<TOut, TParam>(
+        IParameterizedPipelineStep<TIn, TOut, TParam> stepInstance,
+        TParam parameter)
+    {
+        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        {
+            // 步驟 1: 執行前面累積的 Pipeline，取得結果
+            var result = await _pipeline(ct);
+
+            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
+            if (!result.IsSuccess)
+            {
+                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
+            }
+
+            try
+            {
+                // 步驟 3: 使用提供的步驟實例和參數執行處理，並返回結果
+                return await stepInstance.ProcessAsync(result.Value!, parameter, ct);
+            }
+            catch (Exception ex)
+            {
+                // 步驟 4: 若發生例外，將其包裝為失敗結果
+                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
+            }
+        });
+    }
+
+    /// <summary>
+    /// 使用 lambda 和額外參數新增一個步驟到 Pipeline。
+    /// </summary>
+    /// <typeparam name="TOut">步驟的輸出型別。</typeparam>
+    /// <typeparam name="TParam">額外參數的型別。</typeparam>
+    /// <param name="func">要執行的函式，接受輸入值、參數和取消權杖。</param>
+    /// <param name="parameter">傳入函式的額外參數。</param>
+    /// <returns>下一階段的 PipelineBuilder。</returns>
+    public PipelineBuilder<TOut> ThenWithParam<TOut, TParam>(
+        Func<TIn, TParam, CancellationToken, Task<FlowResult<TOut>>> func,
+        TParam parameter)
+    {
+        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        {
+            // 步驟 1: 執行前面累積的 Pipeline，取得結果
+            var result = await _pipeline(ct);
+
+            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
+            if (!result.IsSuccess)
+            {
+                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
+            }
+
+            try
+            {
+                // 步驟 3: 執行提供的函式並返回結果
+                return await func(result.Value!, parameter, ct);
+            }
+            catch (Exception ex)
+            {
+                // 步驟 4: 若發生例外，將其包裝為失敗結果
+                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
+            }
+        });
+    }
+
+    /// <summary>
     /// 使用依賴注入新增一個條件式步驟到 Pipeline。
     /// </summary>
     /// <typeparam name="TStep">要從 DI 容器解析的步驟型別。</typeparam>

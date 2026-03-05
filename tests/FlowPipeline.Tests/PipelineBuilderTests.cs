@@ -295,6 +295,119 @@ public class PipelineBuilderTests
         Assert.Equal(5, result.Value);
         Assert.True(actionCalled);
     }
+
+    [Fact]
+    public async Task ThenWithParam_WithStepInstance_ShouldPassParameterToStep()
+    {
+        // Arrange
+        var multiplyStep = new MultiplyByStep();
+
+        // Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 10)
+            .ThenWithParam(multiplyStep, 5)
+            .ExecuteAsync();
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(50, result.Value);
+    }
+
+    [Fact]
+    public async Task ThenWithParam_WithLambda_ShouldPassParameterToFunction()
+    {
+        // Arrange & Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 10)
+            .ThenWithParam(async (value, multiplier, ct) =>
+                FlowResult<int>.Success(value * multiplier), 7)
+            .ExecuteAsync();
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(70, result.Value);
+    }
+
+    [Fact]
+    public async Task ThenWithParam_WhenPreviousStepFails_ShouldShortCircuit()
+    {
+        // Arrange
+        var multiplyStep = new MultiplyByStep();
+
+        // Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 10)
+            .Then(async (value, ct) => FlowResult<int>.Fail("Previous step failed", "ERROR"))
+            .ThenWithParam(multiplyStep, 5)
+            .ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Previous step failed", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ThenWithParam_WhenStepThrowsException_ShouldReturnFailure()
+    {
+        // Arrange & Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 10)
+            .ThenWithParam(async (value, divisor, ct) =>
+            {
+                if (divisor == 0)
+                    throw new DivideByZeroException("Cannot divide by zero");
+                return FlowResult<int>.Success(value / divisor);
+            }, 0)
+            .ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Cannot divide by zero", result.ErrorMessage);
+        Assert.Equal("STEP_EXCEPTION", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ThenWithParam_WithComplexParameter_ShouldWork()
+    {
+        // Arrange
+        var config = new ValidationConfig
+        {
+            MinValue = 0,
+            MaxValue = 100,
+            ErrorMessage = "數值必須在 0-100 之間"
+        };
+
+        // Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 50)
+            .ThenWithParam(async (value, cfg, ct) =>
+            {
+                if (value < cfg.MinValue || value > cfg.MaxValue)
+                    return FlowResult<int>.Fail(cfg.ErrorMessage, "VALIDATION_ERROR");
+                return FlowResult<int>.Success(value);
+            }, config)
+            .ExecuteAsync();
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(50, result.Value);
+    }
+}
+
+// Test helper classes for ThenWithParam tests
+public class MultiplyByStep : IParameterizedPipelineStep<int, int, int>
+{
+    public Task<FlowResult<int>> ProcessAsync(int input, int multiplier, CancellationToken ct = default)
+    {
+        return Task.FromResult(FlowResult<int>.Success(input * multiplier));
+    }
+}
+
+public class ValidationConfig
+{
+    public int MinValue { get; set; }
+    public int MaxValue { get; set; }
+    public string ErrorMessage { get; set; } = string.Empty;
 }
 
 // Test implementations

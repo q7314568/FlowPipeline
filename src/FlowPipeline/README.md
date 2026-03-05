@@ -78,6 +78,41 @@ var result = await PipelineBuilder<int>
     .ExecuteAsync();
 ```
 
+### Parameterized Steps
+
+Pass additional parameters to specific steps without affecting the pipeline context:
+
+```csharp
+// Using step instance
+var result = await PipelineBuilder<int>
+    .Start(null, 10)
+    .ThenWithParam(new MultiplyByStep(), 5)
+    .ExecuteAsync();
+
+Console.WriteLine(result.Value); // Output: 50
+
+// Using lambda
+var result2 = await PipelineBuilder<int>
+    .Start(null, 10)
+    .ThenWithParam(async (value, multiplier, ct) =>
+        FlowResult<int>.Success(value * multiplier), 7)
+    .ExecuteAsync();
+
+Console.WriteLine(result2.Value); // Output: 70
+```
+
+Implement `IParameterizedPipelineStep<TIn, TOut, TParam>` for reusable parameterized steps:
+
+```csharp
+public class MultiplyByStep : IParameterizedPipelineStep<int, int, int>
+{
+    public Task<FlowResult<int>> ProcessAsync(int input, int multiplier, CancellationToken ct = default)
+    {
+        return Task.FromResult(FlowResult<int>.Success(input * multiplier));
+    }
+}
+```
+
 ### Side Effects
 
 ```csharp
@@ -174,6 +209,8 @@ public interface IPipelineAction
 - `Then<TStep, TOut>()` - Add DI-resolved step
 - `Then<TOut>(IPipelineStep<TIn, TOut>)` - Add step instance
 - `Then<TOut>(Func<TIn, CancellationToken, Task<FlowResult<TOut>>>)` - Add lambda step
+- `ThenWithParam<TOut, TParam>(IParameterizedPipelineStep<TIn, TOut, TParam>, TParam)` - Add parameterized step instance
+- `ThenWithParam<TOut, TParam>(Func<TIn, TParam, CancellationToken, Task<FlowResult<TOut>>>, TParam)` - Add parameterized lambda step
 
 #### Conditional Steps
 
