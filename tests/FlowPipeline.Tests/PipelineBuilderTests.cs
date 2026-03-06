@@ -11,7 +11,7 @@ public class PipelineBuilderTests
     public async Task BasicPipeline_ShouldExecuteSuccessfully()
     {
         // Arrange & Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 5)
             .Then(async (value, ct) => FlowResult<int>.Success(value * 2))
             .Then(async (value, ct) => FlowResult<int>.Success(value + 10))
@@ -29,7 +29,7 @@ public class PipelineBuilderTests
         var executedThirdStep = false;
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 5)
             .Then(async (value, ct) => FlowResult<int>.Success(value * 2))
             .Then(async (value, ct) => FlowResult<int>.Fail("Second step failed", "ERROR_CODE"))
@@ -51,7 +51,7 @@ public class PipelineBuilderTests
     public async Task Pipeline_WithException_ShouldWrapAsFailure()
     {
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 5)
             .Then<int>(async (value, ct) => throw new InvalidOperationException("Test exception"))
             .ExecuteAsync();
@@ -66,8 +66,8 @@ public class PipelineBuilderTests
     public async Task UnitPipeline_ShouldWork()
     {
         // Act
-        var result = await PipelineBuilder<Unit>
-            .Start(null)
+        var result = await PipelineBuilder
+            .Start(null, Unit.Value)
             .Then(async (unit, ct) => FlowResult<int>.Success(42))
             .ExecuteAsync();
 
@@ -80,7 +80,7 @@ public class PipelineBuilderTests
     public async Task ConditionalStep_WhenConditionMet_ShouldExecute()
     {
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 15)
             .ThenWhen(
                 value => value > 10,
@@ -97,7 +97,7 @@ public class PipelineBuilderTests
     public async Task ConditionalStep_WhenConditionNotMet_ShouldFail()
     {
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 5)
             .ThenWhen(
                 value => value > 10,
@@ -117,7 +117,7 @@ public class PipelineBuilderTests
         var sideEffectValue = 0;
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 10)
             .ThenDo(async (value, ct) => { sideEffectValue = value; })
             .Then(async (value, ct) => FlowResult<int>.Success(value * 2))
@@ -136,7 +136,7 @@ public class PipelineBuilderTests
         var runCalled = false;
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 10)
             .ThenRun(async ct => { runCalled = true; })
             .ExecuteAsync();
@@ -151,7 +151,7 @@ public class PipelineBuilderTests
     public async Task MapExtension_ShouldTransformValue()
     {
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 10)
             .Map(x => x * 2)
             .Map(x => x + 5)
@@ -172,7 +172,7 @@ public class PipelineBuilderTests
         var serviceProvider = services.BuildServiceProvider();
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(serviceProvider, 5)
             .Then<MultiplyStep, int>()
             .Then<AddStep, int>()
@@ -187,7 +187,7 @@ public class PipelineBuilderTests
     public async Task DependencyInjection_WithoutProvider_ShouldFail()
     {
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 5)
             .Then<MultiplyStep, int>()
             .ExecuteAsync();
@@ -267,7 +267,7 @@ public class PipelineBuilderTests
         var step = new MultiplyStep();
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 5)
             .Then(step)
             .ExecuteAsync();
@@ -285,7 +285,7 @@ public class PipelineBuilderTests
         var action = new TestAction(() => actionCalled = true);
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 5)
             .ThenDo(action)
             .ExecuteAsync();
@@ -303,7 +303,7 @@ public class PipelineBuilderTests
         var multiplyStep = new MultiplyByStep();
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 10)
             .ThenWithParam(multiplyStep, 5)
             .ExecuteAsync();
@@ -317,7 +317,7 @@ public class PipelineBuilderTests
     public async Task ThenWithParam_WithLambda_ShouldPassParameterToFunction()
     {
         // Arrange & Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 10)
             .ThenWithParam(async (value, multiplier, ct) =>
                 FlowResult<int>.Success(value * multiplier), 7)
@@ -335,7 +335,7 @@ public class PipelineBuilderTests
         var multiplyStep = new MultiplyByStep();
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 10)
             .Then(async (value, ct) => FlowResult<int>.Fail("Previous step failed", "ERROR"))
             .ThenWithParam(multiplyStep, 5)
@@ -350,7 +350,7 @@ public class PipelineBuilderTests
     public async Task ThenWithParam_WhenStepThrowsException_ShouldReturnFailure()
     {
         // Arrange & Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 10)
             .ThenWithParam(async (value, divisor, ct) =>
             {
@@ -378,7 +378,7 @@ public class PipelineBuilderTests
         };
 
         // Act
-        var result = await PipelineBuilder<int>
+        var result = await PipelineBuilder
             .Start(null, 50)
             .ThenWithParam(async (value, cfg, ct) =>
             {
