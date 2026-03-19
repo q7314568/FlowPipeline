@@ -556,8 +556,10 @@ public class AddStep : IPipelineStep<int, int>
     }
 }
 
-public class TestError : PipelineError
+public class TestError
 {
+    public string Message { get; init; } = string.Empty;
+    public string Code { get; init; } = string.Empty;
     public string TestProperty { get; init; } = string.Empty;
 }
 
