@@ -7,7 +7,7 @@ Console.WriteLine("=== FlowPipeline Basic Examples ===\n");
 
 // Example 1: Basic Pipeline
 Console.WriteLine("Example 1: Basic Pipeline");
-var result1 = await PipelineBuilder<int>
+var result1 = await PipelineBuilder
     .Start(null, 5)
     .Then(async (value, ct) => FlowResult<int>.Success(value * 2))
     .Then(async (value, ct) => FlowResult<int>.Success(value + 10))
@@ -18,7 +18,7 @@ Console.WriteLine($"Success: {result1.IsSuccess}\n");
 
 // Example 2: Using Map Extension
 Console.WriteLine("Example 2: Using Map Extension");
-var result2 = await PipelineBuilder<int>
+var result2 = await PipelineBuilder
     .Start(null, 10)
     .Map(x => x * 2)
     .Map(x => x + 5)
@@ -29,7 +29,7 @@ Console.WriteLine($"Success: {result2.IsSuccess}\n");
 
 // Example 3: Error Handling
 Console.WriteLine("Example 3: Error Handling - Short Circuit");
-var result3 = await PipelineBuilder<int>
+var result3 = await PipelineBuilder
     .Start(null, 5)
     .Then(async (value, ct) => FlowResult<int>.Success(value * 2))
     .Then(async (value, ct) => FlowResult<int>.Fail("Something went wrong!", "ERROR_001"))
@@ -46,7 +46,7 @@ Console.WriteLine($"Error Code: {result3.ErrorCode}\n");
 
 // Example 4: Conditional Branching
 Console.WriteLine("Example 4: Conditional Branching");
-var result4 = await PipelineBuilder<int>
+var result4 = await PipelineBuilder
     .Start(null, 15)
     .ThenWhen(
         value => value > 10,
@@ -60,7 +60,7 @@ Console.WriteLine($"Success: {result4.IsSuccess}\n");
 // Example 5: Side Effects
 Console.WriteLine("Example 5: Side Effects with ThenDo");
 var sideEffectLog = new List<string>();
-var result5 = await PipelineBuilder<int>
+var result5 = await PipelineBuilder
     .Start(null, 10)
     .ThenDo(async (value, ct) =>
     {
@@ -89,7 +89,7 @@ services.AddTransient<AddTenStep>();
 services.AddTransient<LoggingAction>();
 var serviceProvider = services.BuildServiceProvider();
 
-var result6 = await PipelineBuilder<int>
+var result6 = await PipelineBuilder
     .Start(serviceProvider, 5)
     .Then<DoubleStep, int>()
     .ThenDo<LoggingAction>()
@@ -125,7 +125,7 @@ Console.WriteLine();
 
 // Example 8: Unit Pipeline (no input)
 Console.WriteLine("Example 8: Unit Pipeline (no input)");
-var result8 = await PipelineBuilder<Unit>
+var result8 = await PipelineBuilder
     .Start(null)
     .Then(async (unit, ct) => FlowResult<string>.Success("Started with Unit"))
     .Then(async (str, ct) => FlowResult<string>.Success(str + " and ended successfully!"))

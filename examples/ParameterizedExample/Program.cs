@@ -5,7 +5,7 @@ Console.WriteLine("=== Parameterized Pipeline Step Examples ===\n");
 
 // Example 1: 使用步驟實例
 Console.WriteLine("Example 1: Using Step Instance with Parameter");
-var result1 = await PipelineBuilder<int>
+var result1 = await PipelineBuilder
     .Start(null, 10)
     .ThenWithParam(new MultiplyByStep(), 5)
     .ExecuteAsync();
@@ -15,7 +15,7 @@ Console.WriteLine($"Success: {result1.IsSuccess}\n");
 
 // Example 2: 使用 Lambda
 Console.WriteLine("Example 2: Using Lambda with Parameter");
-var result2 = await PipelineBuilder<int>
+var result2 = await PipelineBuilder
     .Start(null, 10)
     .ThenWithParam(async (value, multiplier, ct) =>
     {
@@ -35,7 +35,7 @@ var config = new ValidationConfig
     ErrorMessage = "數值必須在 0-100 之間"
 };
 
-var result3 = await PipelineBuilder<int>
+var result3 = await PipelineBuilder
     .Start(null, 50)
     .ThenWithParam(new ValidateNumberStep(), config)
     .Then(async (value, ct) => FlowResult<string>.Success($"Valid number: {value}"))
@@ -46,7 +46,7 @@ Console.WriteLine($"Success: {result3.IsSuccess}\n");
 
 // Example 4: 驗證失敗的情況
 Console.WriteLine("Example 4: Validation Failure");
-var result4 = await PipelineBuilder<int>
+var result4 = await PipelineBuilder
     .Start(null, 150)
     .ThenWithParam(new ValidateNumberStep(), config)
     .ExecuteAsync();
@@ -56,7 +56,7 @@ Console.WriteLine($"Error: {result4.ErrorMessage}\n");
 
 // Example 5: 串接多個參數化步驟
 Console.WriteLine("Example 5: Chaining Multiple Parameterized Steps");
-var result5 = await PipelineBuilder<int>
+var result5 = await PipelineBuilder
     .Start(null, 5)
     .ThenWithParam(async (val, multiplier, ct) =>
         FlowResult<int>.Success(val * multiplier), 2)

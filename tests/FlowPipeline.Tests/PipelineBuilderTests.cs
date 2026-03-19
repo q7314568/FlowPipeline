@@ -8,6 +8,19 @@ namespace FlowPipeline.Tests;
 public class PipelineBuilderTests
 {
     [Fact]
+    public async Task StaticPipelineBuilder_ShouldExecuteSuccessfully()
+    {
+        var result = await PipelineBuilder
+            .Start(null, 5)
+            .Then(async (value, ct) => FlowResult<int>.Success(value * 2))
+            .Then(async (value, ct) => FlowResult<int>.Success(value + 10))
+            .ExecuteAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(20, result.Value);
+    }
+
+    [Fact]
     public async Task BasicPipeline_ShouldExecuteSuccessfully()
     {
         // Arrange & Act
@@ -72,6 +85,18 @@ public class PipelineBuilderTests
             .ExecuteAsync();
 
         // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(42, result.Value);
+    }
+
+    [Fact]
+    public async Task StaticPipelineBuilder_UnitStart_ShouldWork()
+    {
+        var result = await PipelineBuilder
+            .Start(null)
+            .Then(async (unit, ct) => FlowResult<int>.Success(42))
+            .ExecuteAsync();
+
         Assert.True(result.IsSuccess);
         Assert.Equal(42, result.Value);
     }
