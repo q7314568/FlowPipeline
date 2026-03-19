@@ -74,4 +74,24 @@ public class FlowResult<T>
     {
         return new FlowResult<T>(false, default, message, errorCode, error);
     }
+
+    /// <summary>
+    /// 從另一個失敗結果建立相同錯誤資訊的新失敗結果。
+    /// </summary>
+    /// <typeparam name="TSource">來源結果的值型別。</typeparam>
+    /// <param name="source">來源失敗結果。</param>
+    /// <returns>包含相同錯誤資訊的失敗 FlowResult。</returns>
+    /// <exception cref="ArgumentNullException">當 source 為 null 時。</exception>
+    /// <exception cref="InvalidOperationException">當 source 為成功結果時。</exception>
+    public static FlowResult<T> FromFailure<TSource>(FlowResult<TSource> source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (source.IsSuccess)
+        {
+            throw new InvalidOperationException("Cannot create a failure result from a successful source result.");
+        }
+
+        return new FlowResult<T>(false, default, source.ErrorMessage, source.ErrorCode, source.ErrorPayload);
+    }
 }

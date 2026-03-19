@@ -10,9 +10,11 @@ namespace FlowPipeline.Core;
 public class PipelineBuilder<TIn>
 {
     private readonly IServiceProvider? _serviceProvider;
-    private readonly Func<CancellationToken, Task<FlowResult<TIn>>> _pipeline;
+    private readonly Func<IServiceProvider?, CancellationToken, Task<FlowResult<TIn>>> _pipeline;
 
-    private PipelineBuilder(IServiceProvider? serviceProvider, Func<CancellationToken, Task<FlowResult<TIn>>> pipeline)
+    private PipelineBuilder(
+        IServiceProvider? serviceProvider,
+        Func<IServiceProvider?, CancellationToken, Task<FlowResult<TIn>>> pipeline)
     {
         _serviceProvider = serviceProvider;
         _pipeline = pipeline;
@@ -28,7 +30,7 @@ public class PipelineBuilder<TIn>
     public static PipelineBuilder<T> Start<T>(IServiceProvider? provider, T input)
     {
         // 建立一個新的 PipelineBuilder，其 Pipeline 會立即返回包含初始輸入值的成功結果
-        return new PipelineBuilder<T>(provider, _ => Task.FromResult(FlowResult<T>.Success(input)));
+        return new PipelineBuilder<T>(provider, (_, _) => Task.FromResult(FlowResult<T>.Success(input)));
     }
 
     /// <summary>
@@ -51,37 +53,10 @@ public class PipelineBuilder<TIn>
     public PipelineBuilder<TOut> Then<TStep, TOut>()
         where TStep : IPipelineStep<TIn, TOut>
     {
-        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        return CreateStepStage<TOut>(async (input, serviceProvider, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
-            }
-
-            try
-            {
-                // 步驟 3: 檢查是否有提供 ServiceProvider
-                if (_serviceProvider == null)
-                {
-                    throw new InvalidOperationException($"Cannot resolve {typeof(TStep).Name} without a service provider");
-                }
-
-                // 步驟 4: 建立新的 DI Scope 並解析步驟實例
-                using var scope = _serviceProvider.CreateScope();
-                var step = scope.ServiceProvider.GetRequiredService<TStep>();
-                
-                // 步驟 5: 執行步驟並返回結果
-                return await step.ProcessAsync(result.Value!, ct);
-            }
-            catch (Exception ex)
-            {
-                // 步驟 6: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            var step = ResolveRequired<TStep>(serviceProvider);
+            return await step.ProcessAsync(input, ct);
         });
     }
 
@@ -93,27 +68,9 @@ public class PipelineBuilder<TIn>
     /// <returns>下一階段的 PipelineBuilder。</returns>
     public PipelineBuilder<TOut> Then<TOut>(IPipelineStep<TIn, TOut> stepInstance)
     {
-        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        return CreateStepStage<TOut>((input, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
-            }
-
-            try
-            {
-                // 步驟 3: 使用提供的步驟實例執行處理，並返回結果
-                return await stepInstance.ProcessAsync(result.Value!, ct);
-            }
-            catch (Exception ex)
-            {
-                // 步驟 4: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            return stepInstance.ProcessAsync(input, ct);
         });
     }
 
@@ -125,27 +82,9 @@ public class PipelineBuilder<TIn>
     /// <returns>下一階段的 PipelineBuilder。</returns>
     public PipelineBuilder<TOut> Then<TOut>(Func<TIn, CancellationToken, Task<FlowResult<TOut>>> next)
     {
-        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        return CreateStepStage<TOut>((input, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
-            }
-
-            try
-            {
-                // 步驟 3: 使用提供的 Lambda 函式執行處理，並返回結果
-                return await next(result.Value!, ct);
-            }
-            catch (Exception ex)
-            {
-                // 步驟 4: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            return next(input, ct);
         });
     }
 
@@ -161,27 +100,9 @@ public class PipelineBuilder<TIn>
         IParameterizedPipelineStep<TIn, TOut, TParam> stepInstance,
         TParam parameter)
     {
-        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        return CreateStepStage<TOut>((input, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
-            }
-
-            try
-            {
-                // 步驟 3: 使用提供的步驟實例和參數執行處理，並返回結果
-                return await stepInstance.ProcessAsync(result.Value!, parameter, ct);
-            }
-            catch (Exception ex)
-            {
-                // 步驟 4: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            return stepInstance.ProcessAsync(input, parameter, ct);
         });
     }
 
@@ -197,27 +118,9 @@ public class PipelineBuilder<TIn>
         Func<TIn, TParam, CancellationToken, Task<FlowResult<TOut>>> func,
         TParam parameter)
     {
-        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        return CreateStepStage<TOut>((input, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
-            }
-
-            try
-            {
-                // 步驟 3: 執行提供的函式並返回結果
-                return await func(result.Value!, parameter, ct);
-            }
-            catch (Exception ex)
-            {
-                // 步驟 4: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            return func(input, parameter, ct);
         });
     }
 
@@ -231,43 +134,15 @@ public class PipelineBuilder<TIn>
     public PipelineBuilder<TOut> ThenWhen<TStep, TOut>(Func<TIn, bool> predicate)
         where TStep : IPipelineStep<TIn, TOut>
     {
-        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        return CreateStepStage<TOut>(async (input, serviceProvider, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
-            }
-
-            // 步驟 3: 檢查條件是否符合，若不符合則返回失敗結果
-            if (!predicate(result.Value!))
+            if (!predicate(input))
             {
                 return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
             }
 
-            try
-            {
-                // 步驟 4: 檢查是否有提供 ServiceProvider
-                if (_serviceProvider == null)
-                {
-                    throw new InvalidOperationException($"Cannot resolve {typeof(TStep).Name} without a service provider");
-                }
-
-                // 步驟 5: 建立新的 DI Scope 並解析步驟實例
-                using var scope = _serviceProvider.CreateScope();
-                var step = scope.ServiceProvider.GetRequiredService<TStep>();
-                
-                // 步驟 6: 執行步驟並返回結果
-                return await step.ProcessAsync(result.Value!, ct);
-            }
-            catch (Exception ex)
-            {
-                // 步驟 7: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            var step = ResolveRequired<TStep>(serviceProvider);
+            return await step.ProcessAsync(input, ct);
         });
     }
 
@@ -280,33 +155,14 @@ public class PipelineBuilder<TIn>
     /// <returns>下一階段的 PipelineBuilder。</returns>
     public PipelineBuilder<TOut> ThenWhen<TOut>(Func<TIn, bool> predicate, Func<TIn, CancellationToken, Task<FlowResult<TOut>>> next)
     {
-        return new PipelineBuilder<TOut>(_serviceProvider, async ct =>
+        return CreateStepStage<TOut>(async (input, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return FlowResult<TOut>.Fail(result.ErrorMessage ?? "Pipeline failed", result.ErrorCode);
-            }
-
-            // 步驟 3: 檢查條件是否符合，若不符合則返回失敗結果
-            if (!predicate(result.Value!))
+            if (!predicate(input))
             {
                 return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
             }
 
-            try
-            {
-                // 步驟 4: 使用提供的 Lambda 函式執行處理，並返回結果
-                return await next(result.Value!, ct);
-            }
-            catch (Exception ex)
-            {
-                // 步驟 5: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            return await next(input, ct);
         });
     }
 
@@ -319,40 +175,10 @@ public class PipelineBuilder<TIn>
     public PipelineBuilder<TIn> ThenDo<TStep>()
         where TStep : IPipelineAction<TIn>
     {
-        return new PipelineBuilder<TIn>(_serviceProvider, async ct =>
+        return CreateActionStage(async (input, serviceProvider, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return result;
-            }
-
-            try
-            {
-                // 步驟 3: 檢查是否有提供 ServiceProvider
-                if (_serviceProvider == null)
-                {
-                    throw new InvalidOperationException($"Cannot resolve {typeof(TStep).Name} without a service provider");
-                }
-
-                // 步驟 4: 建立新的 DI Scope 並解析動作實例
-                using var scope = _serviceProvider.CreateScope();
-                var action = scope.ServiceProvider.GetRequiredService<TStep>();
-                
-                // 步驟 5: 執行動作（不改變 Pipeline 的值）
-                await action.ExecuteAsync(result.Value!, ct);
-                
-                // 步驟 6: 返回原始結果，保持 Pipeline 的值不變
-                return result;
-            }
-            catch (Exception ex)
-            {
-                // 步驟 7: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
-            }
+            var action = ResolveRequired<TStep>(serviceProvider);
+            await action.ExecuteAsync(input, ct);
         });
     }
 
@@ -364,30 +190,9 @@ public class PipelineBuilder<TIn>
     /// <returns>相同的 PipelineBuilder 實例。</returns>
     public PipelineBuilder<TIn> ThenDo(IPipelineAction<TIn> actionInstance)
     {
-        return new PipelineBuilder<TIn>(_serviceProvider, async ct =>
+        return CreateActionStage((input, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return result;
-            }
-
-            try
-            {
-                // 步驟 3: 使用提供的動作實例執行動作（不改變 Pipeline 的值）
-                await actionInstance.ExecuteAsync(result.Value!, ct);
-                
-                // 步驟 4: 返回原始結果，保持 Pipeline 的值不變
-                return result;
-            }
-            catch (Exception ex)
-            {
-                // 步驟 5: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
-            }
+            return actionInstance.ExecuteAsync(input, ct);
         });
     }
 
@@ -399,30 +204,9 @@ public class PipelineBuilder<TIn>
     /// <returns>相同的 PipelineBuilder 實例。</returns>
     public PipelineBuilder<TIn> ThenDo(Func<TIn, CancellationToken, Task> action)
     {
-        return new PipelineBuilder<TIn>(_serviceProvider, async ct =>
+        return CreateActionStage((input, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return result;
-            }
-
-            try
-            {
-                // 步驟 3: 使用提供的 Lambda 函式執行動作（不改變 Pipeline 的值）
-                await action(result.Value!, ct);
-                
-                // 步驟 4: 返回原始結果，保持 Pipeline 的值不變
-                return result;
-            }
-            catch (Exception ex)
-            {
-                // 步驟 5: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
-            }
+            return action(input, ct);
         });
     }
 
@@ -435,40 +219,10 @@ public class PipelineBuilder<TIn>
     public PipelineBuilder<TIn> ThenRun<TStep>()
         where TStep : IPipelineAction
     {
-        return new PipelineBuilder<TIn>(_serviceProvider, async ct =>
+        return CreateActionStage(async (_, serviceProvider, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return result;
-            }
-
-            try
-            {
-                // 步驟 3: 檢查是否有提供 ServiceProvider
-                if (_serviceProvider == null)
-                {
-                    throw new InvalidOperationException($"Cannot resolve {typeof(TStep).Name} without a service provider");
-                }
-
-                // 步驟 4: 建立新的 DI Scope 並解析動作實例
-                using var scope = _serviceProvider.CreateScope();
-                var action = scope.ServiceProvider.GetRequiredService<TStep>();
-                
-                // 步驟 5: 執行無參數動作（不改變 Pipeline 的值）
-                await action.ExecuteAsync(ct);
-                
-                // 步驟 6: 返回原始結果，保持 Pipeline 的值不變
-                return result;
-            }
-            catch (Exception ex)
-            {
-                // 步驟 7: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
-            }
+            var action = ResolveRequired<TStep>(serviceProvider);
+            await action.ExecuteAsync(ct);
         });
     }
 
@@ -480,30 +234,9 @@ public class PipelineBuilder<TIn>
     /// <returns>相同的 PipelineBuilder 實例。</returns>
     public PipelineBuilder<TIn> ThenRun(IPipelineAction actionInstance)
     {
-        return new PipelineBuilder<TIn>(_serviceProvider, async ct =>
+        return CreateActionStage((_, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return result;
-            }
-
-            try
-            {
-                // 步驟 3: 使用提供的動作實例執行無參數動作（不改變 Pipeline 的值）
-                await actionInstance.ExecuteAsync(ct);
-                
-                // 步驟 4: 返回原始結果，保持 Pipeline 的值不變
-                return result;
-            }
-            catch (Exception ex)
-            {
-                // 步驟 5: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
-            }
+            return actionInstance.ExecuteAsync(ct);
         });
     }
 
@@ -515,30 +248,9 @@ public class PipelineBuilder<TIn>
     /// <returns>相同的 PipelineBuilder 實例。</returns>
     public PipelineBuilder<TIn> ThenRun(Func<CancellationToken, Task> action)
     {
-        return new PipelineBuilder<TIn>(_serviceProvider, async ct =>
+        return CreateActionStage((_, _, ct) =>
         {
-            // 步驟 1: 執行前面累積的 Pipeline，取得結果
-            var result = await _pipeline(ct);
-            
-            // 步驟 2: 若前面的步驟失敗，則進行短路處理，直接返回失敗結果
-            if (!result.IsSuccess)
-            {
-                return result;
-            }
-
-            try
-            {
-                // 步驟 3: 使用提供的 Lambda 函式執行無參數動作（不改變 Pipeline 的值）
-                await action(ct);
-                
-                // 步驟 4: 返回原始結果，保持 Pipeline 的值不變
-                return result;
-            }
-            catch (Exception ex)
-            {
-                // 步驟 5: 若發生例外，將其包裝為失敗結果
-                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
-            }
+            return action(ct);
         });
     }
 
@@ -547,9 +259,81 @@ public class PipelineBuilder<TIn>
     /// </summary>
     /// <param name="ct">取消權杖。</param>
     /// <returns>代表非同步操作的工作，包含最終結果。</returns>
-    public Task<FlowResult<TIn>> ExecuteAsync(CancellationToken ct = default)
+    public async Task<FlowResult<TIn>> ExecuteAsync(CancellationToken ct = default)
     {
-        // 執行完整的 Pipeline 函式並返回結果
-        return _pipeline(ct);
+        // 每次執行共用同一個 DI Scope，確保 scoped service 在整條 pipeline 中一致
+        if (_serviceProvider == null)
+        {
+            return await _pipeline(null, ct);
+        }
+
+        using var executionScope = _serviceProvider.CreateScope();
+        return await _pipeline(executionScope.ServiceProvider, ct);
+    }
+
+    private PipelineBuilder<TOut> CreateStepStage<TOut>(
+        Func<TIn, IServiceProvider?, CancellationToken, Task<FlowResult<TOut>>> next)
+    {
+        return new PipelineBuilder<TOut>(_serviceProvider, async (serviceProvider, ct) =>
+        {
+            var result = await _pipeline(serviceProvider, ct);
+
+            if (!result.IsSuccess)
+            {
+                return FlowResult<TOut>.FromFailure(result);
+            }
+
+            try
+            {
+                return await next(result.Value!, serviceProvider, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
+            }
+        });
+    }
+
+    private PipelineBuilder<TIn> CreateActionStage(
+        Func<TIn, IServiceProvider?, CancellationToken, Task> action)
+    {
+        return new PipelineBuilder<TIn>(_serviceProvider, async (serviceProvider, ct) =>
+        {
+            var result = await _pipeline(serviceProvider, ct);
+
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
+
+            try
+            {
+                await action(result.Value!, serviceProvider, ct);
+                return result;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
+            }
+        });
+    }
+
+    private static TService ResolveRequired<TService>(IServiceProvider? serviceProvider)
+        where TService : notnull
+    {
+        if (serviceProvider == null)
+        {
+            throw new InvalidOperationException($"Cannot resolve {typeof(TService).Name} without a service provider");
+        }
+
+        return serviceProvider.GetRequiredService<TService>();
     }
 }
