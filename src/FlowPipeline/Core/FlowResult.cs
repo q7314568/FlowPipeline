@@ -6,7 +6,7 @@ namespace FlowPipeline.Core;
 /// <typeparam name="T">成功值的型別。</typeparam>
 public class FlowResult<T>
 {
-    private FlowResult(bool isSuccess, T? value, string? errorMessage, string? errorCode, PipelineError? errorPayload)
+    private FlowResult(bool isSuccess, T? value, string? errorMessage, string? errorCode, object? errorPayload)
     {
         IsSuccess = isSuccess;
         Value = value;
@@ -38,7 +38,7 @@ public class FlowResult<T>
     /// <summary>
     /// 若操作失敗，取得詳細的錯誤承載資料。
     /// </summary>
-    public PipelineError? ErrorPayload { get; }
+    public object? ErrorPayload { get; }
 
     /// <summary>
     /// 建立一個帶有指定值的成功結果。
@@ -70,7 +70,6 @@ public class FlowResult<T>
     /// <param name="errorCode">選用的錯誤代碼。</param>
     /// <returns>包含錯誤資訊的失敗 FlowResult。</returns>
     public static FlowResult<T> Fail<TError>(string message, TError error, string? errorCode = null)
-        where TError : PipelineError
     {
         return new FlowResult<T>(false, default, message, errorCode, error);
     }

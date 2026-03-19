@@ -286,6 +286,19 @@ public class PipelineBuilderTests
     }
 
     [Fact]
+    public void FlowResult_CanStoreEnumPayload()
+    {
+        // Act
+        var result = FlowResult<int>.Fail("Enum error", TestErrorCode.ValidationFailed, "VALIDATION_FAILED");
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.True(result.TryGetError<int, TestErrorCode>(out var errorCode));
+        Assert.Equal(TestErrorCode.ValidationFailed, errorCode);
+        Assert.Equal(TestErrorCode.ValidationFailed, result.GetErrorAs<int, TestErrorCode>());
+    }
+
+    [Fact]
     public async Task FailurePayload_ShouldBePreservedAcrossShortCircuit()
     {
         // Arrange
@@ -546,6 +559,12 @@ public class AddStep : IPipelineStep<int, int>
 public class TestError : PipelineError
 {
     public string TestProperty { get; init; } = string.Empty;
+}
+
+public enum TestErrorCode
+{
+    None = 0,
+    ValidationFailed = 1
 }
 
 public class TestAction : IPipelineAction<int>

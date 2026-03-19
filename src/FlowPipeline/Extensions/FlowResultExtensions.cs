@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using FlowPipeline.Core;
 
 namespace FlowPipeline.Extensions;
@@ -15,11 +16,16 @@ public static class FlowResultExtensions
     /// <param name="result">要從中提取錯誤的 FlowResult。</param>
     /// <param name="error">若成功則為錯誤承載資料，否則為 null。</param>
     /// <returns>若錯誤成功提取並轉換則為 true，否則為 false。</returns>
-    public static bool TryGetError<T, TError>(this FlowResult<T> result, out TError? error)
-        where TError : class
+    public static bool TryGetError<T, TError>(this FlowResult<T> result, [MaybeNullWhen(false)] out TError error)
     {
-        error = result.ErrorPayload as TError;
-        return error != null;
+        if (result.ErrorPayload is TError typedError)
+        {
+            error = typedError;
+            return true;
+        }
+
+        error = default;
+        return false;
     }
 
     /// <summary>
@@ -30,8 +36,7 @@ public static class FlowResultExtensions
     /// <param name="result">要從中提取錯誤的 FlowResult。</param>
     /// <returns>轉換為指定型別的錯誤承載資料，若無法取得或無法轉換則為 null。</returns>
     public static TError? GetErrorAs<T, TError>(this FlowResult<T> result)
-        where TError : class
     {
-        return result.ErrorPayload as TError;
+        return result.ErrorPayload is TError typedError ? typedError : default;
     }
 }

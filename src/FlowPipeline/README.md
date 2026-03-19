@@ -172,7 +172,7 @@ public class FlowResult<T>
     public T? Value { get; }
     public string? ErrorMessage { get; }
     public string? ErrorCode { get; }
-    public PipelineError? ErrorPayload { get; }
+    public object? ErrorPayload { get; }
 }
 ```
 
@@ -182,6 +182,8 @@ Create results:
 var success = FlowResult<int>.Success(42);
 var failure = FlowResult<int>.Fail("Something went wrong", "ERROR_CODE");
 ```
+
+`ErrorPayload` can store any additional error object, including custom records, domain error models, enums, or other application-specific types.
 
 ### Pipeline Steps
 
