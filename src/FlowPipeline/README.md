@@ -119,6 +119,27 @@ Console.WriteLine(failedResult.ErrorMessage); // "Condition not met"
 You can also use the DI-based overload when the guarded stage is implemented as a reusable step:
 
 ```csharp
+public class ProcessPaymentStep : IPipelineStep<InventoryResult, PaymentResult>
+{
+    private readonly IPaymentGateway _paymentGateway;
+
+    public ProcessPaymentStep(IPaymentGateway paymentGateway)
+    {
+        _paymentGateway = paymentGateway;
+    }
+
+    public async Task<FlowResult<PaymentResult>> ProcessAsync(InventoryResult input, CancellationToken ct)
+    {
+        var payment = await _paymentGateway.ChargeAsync(input.OrderId, input.Amount, ct);
+        return FlowResult<PaymentResult>.Success(payment);
+    }
+}
+
+var services = new ServiceCollection();
+services.AddTransient<ProcessPaymentStep>();
+services.AddTransient<IPaymentGateway, PaymentGateway>();
+var serviceProvider = services.BuildServiceProvider();
+
 var result = await PipelineBuilder
     .Start(serviceProvider, inventoryResult)
     .ThenWhen<ProcessPaymentStep, PaymentResult>(inventory => inventory.IsAvailable)
