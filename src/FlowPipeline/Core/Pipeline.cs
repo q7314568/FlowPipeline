@@ -12,6 +12,11 @@ public class Pipeline<TIn>
     private readonly IServiceProvider? _serviceProvider;
     private readonly Func<IServiceProvider?, CancellationToken, Task<FlowResult<TIn>>> _pipeline;
 
+    /// <summary>
+    /// 初始化 <see cref="Pipeline{TIn}"/> 類別的新執行節點。
+    /// </summary>
+    /// <param name="serviceProvider">提供 DI 解析能力的服務提供者。</param>
+    /// <param name="pipeline">封裝目前 Pipeline 執行流程的委派。</param>
     internal Pipeline(
         IServiceProvider? serviceProvider,
         Func<IServiceProvider?, CancellationToken, Task<FlowResult<TIn>>> pipeline)
@@ -224,6 +229,12 @@ public class Pipeline<TIn>
         return await _pipeline(executionScope.ServiceProvider, ct);
     }
 
+    /// <summary>
+    /// 建立新的步驟節點，並在前一階段成功時執行下一個轉換。
+    /// </summary>
+    /// <typeparam name="TOut">下一階段的輸出型別。</typeparam>
+    /// <param name="next">實際執行下一階段的委派。</param>
+    /// <returns>代表下一階段的新 Pipeline。</returns>
     private Pipeline<TOut> CreateStepStage<TOut>(
         Func<TIn, IServiceProvider?, CancellationToken, Task<FlowResult<TOut>>> next)
     {
@@ -251,6 +262,11 @@ public class Pipeline<TIn>
         });
     }
 
+    /// <summary>
+    /// 建立新的副作用節點，並在前一階段成功時執行指定動作。
+    /// </summary>
+    /// <param name="action">實際執行副作用的委派。</param>
+    /// <returns>維持相同輸入型別的 Pipeline。</returns>
     private Pipeline<TIn> CreateActionStage(
         Func<TIn, IServiceProvider?, CancellationToken, Task> action)
     {
@@ -279,6 +295,13 @@ public class Pipeline<TIn>
         });
     }
 
+    /// <summary>
+    /// 從服務提供者解析指定型別，若未提供服務提供者則拋出例外。
+    /// </summary>
+    /// <typeparam name="TService">要解析的服務型別。</typeparam>
+    /// <param name="serviceProvider">目前 Pipeline 執行所使用的服務提供者。</param>
+    /// <returns>解析後的服務實例。</returns>
+    /// <exception cref="InvalidOperationException">當未提供服務提供者時拋出。</exception>
     private static TService ResolveRequired<TService>(IServiceProvider? serviceProvider)
         where TService : notnull
     {
