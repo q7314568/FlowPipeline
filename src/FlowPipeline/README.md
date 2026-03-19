@@ -28,7 +28,7 @@ dotnet add package FlowPipeline
 ```csharp
 using FlowPipeline.Core;
 
-var result = await PipelineBuilder<int>
+var result = await PipelineBuilder
     .Start(null, 5)
     .Then(async (value, ct) => FlowResult<int>.Success(value * 2))
     .Then(async (value, ct) => FlowResult<int>.Success(value + 10))
@@ -61,7 +61,7 @@ public class ValidateOrderStep : IPipelineStep<Order, Order>
 }
 
 // Use in pipeline
-var result = await PipelineBuilder<Order>
+var result = await PipelineBuilder
     .Start(serviceProvider, order)
     .Then<ValidateOrderStep, Order>()
     .Then<ProcessPaymentStep, PaymentResult>()
@@ -69,11 +69,26 @@ var result = await PipelineBuilder<Order>
 ```
 
 Each `ExecuteAsync()` call creates one shared DI scope for the full pipeline run, so all DI-resolved steps and actions in that execution see the same scoped services.
+The legacy `PipelineBuilder<T>.Start(...)` entrypoint is still supported for backward compatibility.
+
+Preferred style:
+
+```csharp
+var pipeline = PipelineBuilder
+    .Start(null, 5);
+```
+
+Legacy style still works, but new code should prefer the non-generic `PipelineBuilder` entrypoint:
+
+```csharp
+var pipeline = PipelineBuilder<int>
+    .Start(null, 5);
+```
 
 ### Conditional Branching
 
 ```csharp
-var result = await PipelineBuilder<int>
+var result = await PipelineBuilder
     .Start(null, 15)
     .ThenWhen(
         value => value > 10,
@@ -88,7 +103,7 @@ Pass additional parameters to specific steps without affecting the pipeline cont
 
 ```csharp
 // Using step instance
-var result = await PipelineBuilder<int>
+var result = await PipelineBuilder
     .Start(null, 10)
     .ThenWithParam(new MultiplyByStep(), 5)
     .ExecuteAsync();
@@ -96,7 +111,7 @@ var result = await PipelineBuilder<int>
 Console.WriteLine(result.Value); // Output: 50
 
 // Using lambda
-var result2 = await PipelineBuilder<int>
+var result2 = await PipelineBuilder
     .Start(null, 10)
     .ThenWithParam(async (value, multiplier, ct) =>
         FlowResult<int>.Success(value * multiplier), 7)
@@ -120,7 +135,7 @@ public class MultiplyByStep : IParameterizedPipelineStep<int, int, int>
 ### Side Effects
 
 ```csharp
-var result = await PipelineBuilder<Order>
+var result = await PipelineBuilder
     .Start(serviceProvider, order)
     .Then<ValidateOrderStep, Order>()
     .ThenDo(async (order, ct) => 
@@ -135,7 +150,7 @@ var result = await PipelineBuilder<Order>
 ### Transformations
 
 ```csharp
-var result = await PipelineBuilder<int>
+var result = await PipelineBuilder
     .Start(null, 10)
     .Map(x => x * 2)
     .Map(x => x + 5)
@@ -207,6 +222,7 @@ public interface IPipelineAction
 
 - `Start<T>(IServiceProvider?, T)` - Start with an input value
 - `Start(IServiceProvider?)` - Start without input (uses `Unit`)
+- Legacy compatibility: `PipelineBuilder<T>.Start(...)` remains available
 
 #### Adding Steps
 
@@ -281,7 +297,7 @@ if (result.TryGetError<Order, ValidationError>(out var error))
 All exceptions thrown in pipeline steps are automatically caught and converted to `FlowResult.Fail`:
 
 ```csharp
-var result = await PipelineBuilder<int>
+var result = await PipelineBuilder
     .Start(null, 5)
     .Then(async (value, ct) => 
     {
@@ -319,7 +335,7 @@ public class OrderProcessingWorkflow
 
     public async Task<FlowResult<OrderResult>> ProcessOrderAsync(Order order)
     {
-        return await PipelineBuilder<Order>
+        return await PipelineBuilder
             .Start(_serviceProvider, order)
             // Validate the order
             .Then<ValidateOrderStep, Order>()
