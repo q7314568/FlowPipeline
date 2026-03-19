@@ -87,13 +87,41 @@ var pipeline = PipelineBuilder<int>
 
 ### Conditional Branching
 
+`ThenWhen` behaves like a guard for the next stage.
+If the predicate returns `false`, the pipeline stops and returns a failed `FlowResult` with error code `CONDITION_FAILED`.
+It does not skip the stage and continue with the existing value.
+
 ```csharp
-var result = await PipelineBuilder
+var successResult = await PipelineBuilder
     .Start(null, 15)
     .ThenWhen(
         value => value > 10,
         async (value, ct) => FlowResult<string>.Success($"Large: {value}")
     )
+    .ExecuteAsync();
+
+Console.WriteLine(successResult.IsSuccess); // true
+Console.WriteLine(successResult.Value); // "Large: 15"
+
+var failedResult = await PipelineBuilder
+    .Start(null, 5)
+    .ThenWhen(
+        value => value > 10,
+        async (value, ct) => FlowResult<string>.Success($"Large: {value}")
+    )
+    .ExecuteAsync();
+
+Console.WriteLine(failedResult.IsSuccess); // false
+Console.WriteLine(failedResult.ErrorCode); // "CONDITION_FAILED"
+Console.WriteLine(failedResult.ErrorMessage); // "Condition not met"
+```
+
+You can also use the DI-based overload when the guarded stage is implemented as a reusable step:
+
+```csharp
+var result = await PipelineBuilder
+    .Start(serviceProvider, inventoryResult)
+    .ThenWhen<ProcessPaymentStep, PaymentResult>(inventory => inventory.IsAvailable)
     .ExecuteAsync();
 ```
 
@@ -236,8 +264,8 @@ public interface IPipelineAction
 
 #### Conditional Steps
 
-- `ThenWhen<TStep, TOut>(Func<TIn, bool>)` - Conditional DI step
-- `ThenWhen<TOut>(Func<TIn, bool>, Func<TIn, CancellationToken, Task<FlowResult<TOut>>>)` - Conditional lambda step
+- `ThenWhen<TStep, TOut>(Func<TIn, bool>)` - Conditional DI step; returns `CONDITION_FAILED` when the predicate is false
+- `ThenWhen<TOut>(Func<TIn, bool>, Func<TIn, CancellationToken, Task<FlowResult<TOut>>>)` - Conditional lambda step; returns `CONDITION_FAILED` when the predicate is false
 
 #### Side Effects with Input
 

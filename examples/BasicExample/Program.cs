@@ -54,8 +54,18 @@ var result4 = await PipelineBuilder
     )
     .ExecuteAsync();
 
-Console.WriteLine($"Result: {result4.Value}");
-Console.WriteLine($"Success: {result4.IsSuccess}\n");
+var failedResult4 = await PipelineBuilder
+    .Start(null, 5)
+    .ThenWhen(
+        value => value > 10,
+        async (value, ct) => FlowResult<string>.Success($"Large value: {value}")
+    )
+    .ExecuteAsync();
+
+Console.WriteLine($"Success result: {result4.Value}");
+Console.WriteLine($"Success path succeeded: {result4.IsSuccess}");
+Console.WriteLine($"Failure path succeeded: {failedResult4.IsSuccess}");
+Console.WriteLine($"Failure path error: {failedResult4.ErrorCode} - {failedResult4.ErrorMessage}\n");
 
 // Example 5: Side Effects
 Console.WriteLine("Example 5: Side Effects with ThenDo");
