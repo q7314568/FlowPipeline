@@ -9,9 +9,11 @@ A .NET 10 class library implementing the Pipeline Pattern for building composabl
 - ⚡ **Lazy Execution**: Pipeline steps are only executed when `ExecuteAsync()` is called
 - 🛡️ **Short-Circuit**: Automatically stops execution on first failure
 - 🧩 **Dependency Injection**: Built-in support for DI-based step resolution
+- 🗂️ **Shared Execution Scope**: DI-resolved stages share one scope per pipeline execution
 - 🔀 **Conditional Branching**: Execute steps based on predicates
 - 🎭 **Side Effects**: Support for actions that don't modify the pipeline value
 - 📦 **Exception Handling**: Automatic exception wrapping as `FlowResult`
+- ⛔ **Cancellation Friendly**: `OperationCanceledException` is propagated to the caller
 
 ## Installation
 
@@ -65,6 +67,8 @@ var result = await PipelineBuilder<Order>
     .Then<ProcessPaymentStep, PaymentResult>()
     .ExecuteAsync();
 ```
+
+Each `ExecuteAsync()` call creates one shared DI scope for the full pipeline run, so all DI-resolved steps and actions in that execution see the same scoped services.
 
 ### Conditional Branching
 
@@ -288,6 +292,8 @@ var result = await PipelineBuilder<int>
 Console.WriteLine(result.IsSuccess); // false
 Console.WriteLine(result.ErrorMessage); // "Step execution failed: Something went wrong"
 ```
+
+`OperationCanceledException` and `TaskCanceledException` are not wrapped. If the supplied `CancellationToken` is canceled, cancellation is propagated to the caller.
 
 ## Best Practices
 

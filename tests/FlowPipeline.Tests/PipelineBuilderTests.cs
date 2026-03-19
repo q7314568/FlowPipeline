@@ -261,6 +261,32 @@ public class PipelineBuilderTests
     }
 
     [Fact]
+    public async Task FailurePayload_ShouldBePreservedAcrossShortCircuit()
+    {
+        // Arrange
+        var customError = new TestError
+        {
+            Message = "Validation failed",
+            Code = "VALIDATION_ERROR",
+            TestProperty = "PayloadValue"
+        };
+
+        // Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 10)
+            .Then(async (value, ct) => FlowResult<int>.Fail("Validation failed", customError, "VALIDATION_ERROR"))
+            .Then(async (value, ct) => FlowResult<string>.Success($"Value: {value}"))
+            .ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Validation failed", result.ErrorMessage);
+        Assert.Equal("VALIDATION_ERROR", result.ErrorCode);
+        Assert.True(result.TryGetError<string, TestError>(out var error));
+        Assert.Equal("PayloadValue", error!.TestProperty);
+    }
+
+    [Fact]
     public async Task StepInstance_ShouldExecuteCorrectly()
     {
         // Arrange
@@ -275,6 +301,44 @@ public class PipelineBuilderTests
         // Assert
         Assert.True(result.IsSuccess);
         Assert.Equal(10, result.Value);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenStepIsCancelled_ShouldPropagateCancellation()
+    {
+        // Arrange
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            PipelineBuilder<int>
+                .Start(null, 5)
+                .Then(async (value, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    return FlowResult<int>.Success(value);
+                })
+                .ExecuteAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenActionIsCancelled_ShouldPropagateCancellation()
+    {
+        // Arrange
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            PipelineBuilder<int>
+                .Start(null, 5)
+                .ThenDo(async (value, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await Task.CompletedTask;
+                })
+                .ExecuteAsync(cts.Token));
     }
 
     [Fact]
@@ -392,6 +456,33 @@ public class PipelineBuilderTests
         Assert.True(result.IsSuccess);
         Assert.Equal(50, result.Value);
     }
+
+    [Fact]
+    public async Task DependencyInjection_ShouldReuseScopedServicesWithinSingleExecution()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.AddScoped<ScopedExecutionDependency>();
+        services.AddTransient<CaptureScopedIdStep>();
+        services.AddTransient<VerifyScopedIdStep>();
+        var serviceProvider = services.BuildServiceProvider();
+
+        var pipeline = PipelineBuilder<string>
+            .Start(serviceProvider, "start")
+            .Then<CaptureScopedIdStep, string>()
+            .Then<VerifyScopedIdStep, string>();
+
+        // Act
+        var firstRun = await pipeline.ExecuteAsync();
+        var secondRun = await pipeline.ExecuteAsync();
+
+        // Assert
+        Assert.True(firstRun.IsSuccess);
+        Assert.Equal("same", firstRun.Value);
+
+        Assert.True(secondRun.IsSuccess);
+        Assert.Equal("same", secondRun.Value);
+    }
 }
 
 // Test helper classes for ThenWithParam tests
@@ -445,5 +536,42 @@ public class TestAction : IPipelineAction<int>
     {
         _action();
         return Task.CompletedTask;
+    }
+}
+
+public sealed class ScopedExecutionDependency
+{
+    public Guid Id { get; } = Guid.NewGuid();
+}
+
+public class CaptureScopedIdStep : IPipelineStep<string, string>
+{
+    private readonly ScopedExecutionDependency _dependency;
+
+    public CaptureScopedIdStep(ScopedExecutionDependency dependency)
+    {
+        _dependency = dependency;
+    }
+
+    public Task<FlowResult<string>> ProcessAsync(string input, CancellationToken ct = default)
+    {
+        return Task.FromResult(FlowResult<string>.Success(_dependency.Id.ToString()));
+    }
+}
+
+public class VerifyScopedIdStep : IPipelineStep<string, string>
+{
+    private readonly ScopedExecutionDependency _dependency;
+
+    public VerifyScopedIdStep(ScopedExecutionDependency dependency)
+    {
+        _dependency = dependency;
+    }
+
+    public Task<FlowResult<string>> ProcessAsync(string input, CancellationToken ct = default)
+    {
+        var currentId = _dependency.Id.ToString();
+        var result = string.Equals(input, currentId, StringComparison.Ordinal) ? "same" : "different";
+        return Task.FromResult(FlowResult<string>.Success(result));
     }
 }
