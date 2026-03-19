@@ -271,8 +271,10 @@ public interface IPipelineAction
 ### Custom Errors
 
 ```csharp
-public class ValidationError : PipelineError
+public class ValidationError
 {
+    public string Message { get; init; } = string.Empty;
+    public string Code { get; init; } = string.Empty;
     public string Field { get; init; } = string.Empty;
     public string[] ValidationMessages { get; init; } = Array.Empty<string>();
 }
