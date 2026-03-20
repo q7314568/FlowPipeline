@@ -1,0 +1,98 @@
+FlowPipeline.Abstractions.IParameterizedPipelineStep`3
+  method System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TOut]] ProcessAsync(TIn, TParam, System.Threading.CancellationToken)
+FlowPipeline.Abstractions.IPipelineAction
+  method System.Threading.Tasks.Task ExecuteAsync(System.Threading.CancellationToken)
+FlowPipeline.Abstractions.IPipelineAction`1
+  method System.Threading.Tasks.Task ExecuteAsync(TIn, System.Threading.CancellationToken)
+FlowPipeline.Abstractions.IPipelineObserver
+  method System.Threading.Tasks.ValueTask OnExecutionCompletedAsync(FlowPipeline.Core.PipelineExecutionContext, FlowPipeline.Core.FlowFailure, System.Threading.CancellationToken)
+  method System.Threading.Tasks.ValueTask OnExecutionStartedAsync(FlowPipeline.Core.PipelineExecutionContext, System.Threading.CancellationToken)
+  method System.Threading.Tasks.ValueTask OnStageCompletedAsync(FlowPipeline.Core.PipelineStageContext, FlowPipeline.Core.FlowFailure, System.Threading.CancellationToken)
+  method System.Threading.Tasks.ValueTask OnStageStartedAsync(FlowPipeline.Core.PipelineStageContext, System.Threading.CancellationToken)
+FlowPipeline.Abstractions.IPipelineStep`2
+  method System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TOut]] ProcessAsync(TIn, System.Threading.CancellationToken)
+FlowPipeline.Core.FlowFailure
+  ctor Void .ctor(System.String, System.String, System.Object, System.Exception)
+  prop String Code
+  prop Exception Exception
+  prop String Message
+  prop Object Payload
+FlowPipeline.Core.FlowResult`1
+  prop String ErrorCode
+  prop String ErrorMessage
+  prop Object ErrorPayload
+  prop Exception Exception
+  prop FlowFailure Failure
+  prop Boolean IsSuccess
+  prop T Value
+  method FlowPipeline.Core.FlowResult`1[T] Fail(FlowPipeline.Core.FlowFailure)
+  method FlowPipeline.Core.FlowResult`1[T] Fail(System.String, System.String)
+  method FlowPipeline.Core.FlowResult`1[T] Fail[TError](System.String, TError, System.String, System.Exception)
+  method FlowPipeline.Core.FlowResult`1[T] FailFromException(System.String, System.Exception, System.String)
+  method FlowPipeline.Core.FlowResult`1[T] FromFailure[TSource](FlowPipeline.Core.FlowResult`1[TSource])
+  method FlowPipeline.Core.FlowResult`1[T] Success(T)
+FlowPipeline.Core.Pipeline`1
+  method System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TIn]] ExecuteAsync(System.Threading.CancellationToken)
+  method FlowPipeline.Core.Pipeline`1[TOut] Then[TOut](FlowPipeline.Abstractions.IPipelineStep`2[TIn,TOut])
+  method FlowPipeline.Core.Pipeline`1[TOut] Then[TOut](System.Func`3[TIn,System.Threading.CancellationToken,System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TOut]]])
+  method FlowPipeline.Core.Pipeline`1[TOut] Then[TStep,TOut]()
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenDo(FlowPipeline.Abstractions.IPipelineAction`1[TIn])
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenDo(System.Func`3[TIn,System.Threading.CancellationToken,System.Threading.Tasks.Task])
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenDo[TStep]()
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenRun(FlowPipeline.Abstractions.IPipelineAction)
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenRun(System.Func`2[System.Threading.CancellationToken,System.Threading.Tasks.Task])
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenRun[TStep]()
+  method FlowPipeline.Core.Pipeline`1[TOut] ThenWhen[TOut](System.Func`2[TIn,System.Boolean], System.Func`3[TIn,System.Threading.CancellationToken,System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TOut]]])
+  method FlowPipeline.Core.Pipeline`1[TOut] ThenWhen[TStep,TOut](System.Func`2[TIn,System.Boolean])
+  method FlowPipeline.Core.Pipeline`1[TOut] ThenWithParam[TOut,TParam](FlowPipeline.Abstractions.IParameterizedPipelineStep`3[TIn,TOut,TParam], TParam)
+  method FlowPipeline.Core.Pipeline`1[TOut] ThenWithParam[TOut,TParam](System.Func`4[TIn,TParam,System.Threading.CancellationToken,System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TOut]]], TParam)
+FlowPipeline.Core.PipelineBuilder
+  method FlowPipeline.Core.Pipeline`1[FlowPipeline.Core.Unit] Start(System.IServiceProvider, FlowPipeline.Core.PipelineOptions)
+  method FlowPipeline.Core.Pipeline`1[T] Start[T](System.IServiceProvider, T, FlowPipeline.Core.PipelineOptions)
+FlowPipeline.Core.PipelineBuilder`1
+  method FlowPipeline.Core.PipelineBuilder`1[FlowPipeline.Core.Unit] Start(System.IServiceProvider, FlowPipeline.Core.PipelineOptions)
+  method FlowPipeline.Core.PipelineBuilder`1[T] Start[T](System.IServiceProvider, T, FlowPipeline.Core.PipelineOptions)
+FlowPipeline.Core.PipelineExecutionContext
+  prop Guid ExecutionId
+  prop String PipelineName
+  prop DateTimeOffset StartedAtUtc
+  prop Int32 TotalStages
+FlowPipeline.Core.PipelineFailureMappingContext
+  prop String DefaultCode
+  prop String DefaultMessage
+  prop Exception Exception
+  prop Boolean IsTimeout
+  prop PipelineStageContext Stage
+FlowPipeline.Core.PipelineOptions
+  ctor Void .ctor()
+  prop Func`2 FailureMapper
+  prop String Name
+  prop IReadOnlyList`1 Observers
+  prop PipelineRetryOptions Retry
+  prop Nullable`1 StageTimeout
+FlowPipeline.Core.PipelineRetryOptions
+  ctor Void .ctor()
+  prop TimeSpan Delay
+  prop Int32 MaxAttempts
+  prop Func`2 ShouldRetryException
+  prop Func`2 ShouldRetryFailure
+FlowPipeline.Core.PipelineStageContext
+  prop Int32 Attempt
+  prop PipelineExecutionContext Execution
+  prop Type InputType
+  prop Type OutputType
+  prop Int32 StageIndex
+  prop PipelineStageKind StageKind
+  prop String StageName
+  prop Nullable`1 Timeout
+FlowPipeline.Core.PipelineStageKind
+  field PipelineStageKind Action
+  field PipelineStageKind Step
+  field Int32 value__
+FlowPipeline.Core.Unit
+  field Unit Value
+FlowPipeline.Extensions.FlowResultExtensions
+  method TError GetErrorAs[T,TError](FlowPipeline.Core.FlowResult`1[T])
+  method Boolean TryGetError[T,TError](FlowPipeline.Core.FlowResult`1[T], TError ByRef)
+FlowPipeline.Extensions.PipelineBuilderExtensions
+  method FlowPipeline.Core.Pipeline`1[T] Map[T](FlowPipeline.Core.Pipeline`1[T], System.Func`2[T,T])

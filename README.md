@@ -1,6 +1,6 @@
 # FlowPipeline
 
-A .NET 10 class library implementing the Pipeline Pattern for building composable, type-safe data processing workflows.
+A .NET 8+ class library implementing the Pipeline Pattern for building composable, type-safe data processing workflows.
 
 ## Features
 
@@ -31,6 +31,21 @@ Console.WriteLine(result.Value); // Output: 20
 
 For detailed documentation, usage examples, and API reference, see [src/FlowPipeline/README.md](src/FlowPipeline/README.md).
 
+## Roadmap
+
+The enterprise-readiness roadmap lives in [docs/ROADMAP.md](docs/ROADMAP.md) and is updated in-repo so progress can be tracked over time.
+
+## Governance
+
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Versioning and support policy: [docs/VERSIONING.md](docs/VERSIONING.md)
+- Release process: [docs/RELEASING.md](docs/RELEASING.md)
+
+## Examples And Benchmarks
+
+- Realistic workflow sample: `examples/OrderWorkflowExample`
+- Microbenchmarks: `benchmarks/FlowPipeline.Benchmarks`
+
 ## Building
 
 ```bash
@@ -51,6 +66,10 @@ src/
     ├── Core/               # Core classes (FlowResult, PipelineBuilder, etc.)
     ├── Abstractions/       # Interfaces (IPipelineStep, IPipelineAction)
     └── Extensions/         # Extension methods
+examples/
+└── OrderWorkflowExample/  # Realistic business workflow sample
+benchmarks/
+└── FlowPipeline.Benchmarks/ # Performance benchmarks
 tests/
 └── FlowPipeline.Tests/    # Unit tests
 ```

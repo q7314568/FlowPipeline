@@ -1,6 +1,10 @@
 <Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/FlowPipeline.Benchmarks/FlowPipeline.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/BasicExample/BasicExample.csproj" />
+    <Project Path="examples/OrderWorkflowExample/OrderWorkflowExample.csproj" />
     <Project Path="examples/ParameterizedExample/ParameterizedExample.csproj" />
   </Folder>
   <Folder Name="/src/">

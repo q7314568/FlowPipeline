@@ -6,13 +6,14 @@ namespace FlowPipeline.Core;
 /// <typeparam name="T">成功值的型別。</typeparam>
 public class FlowResult<T>
 {
-    private FlowResult(bool isSuccess, T? value, string? errorMessage, string? errorCode, object? errorPayload)
+    private FlowResult(
+        bool isSuccess,
+        T? value,
+        FlowFailure? failure)
     {
         IsSuccess = isSuccess;
         Value = value;
-        ErrorMessage = errorMessage;
-        ErrorCode = errorCode;
-        ErrorPayload = errorPayload;
+        Failure = failure;
     }
 
     /// <summary>
@@ -28,17 +29,27 @@ public class FlowResult<T>
     /// <summary>
     /// 若操作失敗，取得錯誤訊息。
     /// </summary>
-    public string? ErrorMessage { get; }
+    public string? ErrorMessage => Failure?.Message;
 
     /// <summary>
     /// 若操作失敗，取得錯誤代碼。
     /// </summary>
-    public string? ErrorCode { get; }
+    public string? ErrorCode => Failure?.Code;
 
     /// <summary>
     /// 若操作失敗，取得詳細的錯誤承載資料。
     /// </summary>
-    public object? ErrorPayload { get; }
+    public object? ErrorPayload => Failure?.Payload;
+
+    /// <summary>
+    /// 若操作失敗且由例外所造成，取得原始例外。
+    /// </summary>
+    public Exception? Exception => Failure?.Exception;
+
+    /// <summary>
+    /// 若操作失敗，取得結構化的失敗資訊。
+    /// </summary>
+    public FlowFailure? Failure { get; }
 
     /// <summary>
     /// 建立一個帶有指定值的成功結果。
@@ -47,7 +58,7 @@ public class FlowResult<T>
     /// <returns>包含該值的成功 FlowResult。</returns>
     public static FlowResult<T> Success(T value)
     {
-        return new FlowResult<T>(true, value, null, null, null);
+        return new FlowResult<T>(true, value, null);
     }
 
     /// <summary>
@@ -58,7 +69,21 @@ public class FlowResult<T>
     /// <returns>包含錯誤資訊的失敗 FlowResult。</returns>
     public static FlowResult<T> Fail(string message, string? errorCode = null)
     {
-        return new FlowResult<T>(false, default, message, errorCode, null);
+        return new FlowResult<T>(false, default, new FlowFailure(message, errorCode));
+    }
+
+    /// <summary>
+    /// 建立一個帶有指定錯誤訊息、原始例外和選用錯誤代碼的失敗結果。
+    /// </summary>
+    /// <param name="message">錯誤訊息。</param>
+    /// <param name="exception">原始例外。</param>
+    /// <param name="errorCode">選用的錯誤代碼。</param>
+    /// <returns>包含錯誤資訊與原始例外的失敗 FlowResult。</returns>
+    public static FlowResult<T> FailFromException(string message, Exception exception, string? errorCode = null)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        return new FlowResult<T>(false, default, new FlowFailure(message, errorCode, exception: exception));
     }
 
     /// <summary>
@@ -68,10 +93,23 @@ public class FlowResult<T>
     /// <param name="message">錯誤訊息。</param>
     /// <param name="error">錯誤承載資料。</param>
     /// <param name="errorCode">選用的錯誤代碼。</param>
+    /// <param name="exception">選用的原始例外。</param>
     /// <returns>包含錯誤資訊的失敗 FlowResult。</returns>
-    public static FlowResult<T> Fail<TError>(string message, TError error, string? errorCode = null)
+    public static FlowResult<T> Fail<TError>(string message, TError error, string? errorCode = null, Exception? exception = null)
     {
-        return new FlowResult<T>(false, default, message, errorCode, error);
+        return new FlowResult<T>(false, default, new FlowFailure(message, errorCode, error, exception));
+    }
+
+    /// <summary>
+    /// 使用既有的結構化失敗資訊建立失敗結果。
+    /// </summary>
+    /// <param name="failure">結構化失敗資訊。</param>
+    /// <returns>包含該失敗資訊的失敗 FlowResult。</returns>
+    public static FlowResult<T> Fail(FlowFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+
+        return new FlowResult<T>(false, default, failure);
     }
 
     /// <summary>
@@ -91,6 +129,6 @@ public class FlowResult<T>
             throw new InvalidOperationException("Cannot create a failure result from a successful source result.");
         }
 
-        return new FlowResult<T>(false, default, source.ErrorMessage, source.ErrorCode, source.ErrorPayload);
+        return new FlowResult<T>(false, default, source.Failure);
     }
 }

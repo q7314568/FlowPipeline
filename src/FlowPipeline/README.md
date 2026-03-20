@@ -1,6 +1,6 @@
 # FlowPipeline
 
-A .NET 10 class library implementing the Pipeline Pattern for building composable, type-safe data processing workflows.
+A .NET 8+ class library implementing the Pipeline Pattern for building composable, type-safe data processing workflows.
 
 ## Features
 
@@ -14,6 +14,9 @@ A .NET 10 class library implementing the Pipeline Pattern for building composabl
 - 🎭 **Side Effects**: Support for actions that don't modify the pipeline value
 - 📦 **Exception Handling**: Automatic exception wrapping as `FlowResult`
 - ⛔ **Cancellation Friendly**: `OperationCanceledException` is propagated to the caller
+- 👀 **Observability Hooks**: Pluggable observers for execution and stage events
+- 🧭 **Execution Metadata**: Structured execution and stage context for diagnostics
+- 🔁 **Policies**: Optional timeout, retry, and custom failure mapping per pipeline
 
 ## Installation
 
@@ -84,6 +87,37 @@ Legacy style still works, but new code should prefer the non-generic `PipelineBu
 var pipeline = PipelineBuilder<int>
     .Start(null, 5);
 ```
+
+### Observability And Policies
+
+`PipelineOptions` adds observers, retry, timeout, and failure mapping without forcing a specific logging library:
+
+```csharp
+var options = new PipelineOptions
+{
+    Name = "OrderWorkflow",
+    StageTimeout = TimeSpan.FromSeconds(2),
+    Retry = new PipelineRetryOptions
+    {
+        MaxAttempts = 3,
+        ShouldRetryException = ex => ex is HttpRequestException
+    },
+    Observers = new[] { new ConsoleObserver() },
+    FailureMapper = context => new FlowFailure(
+        context.DefaultMessage,
+        context.DefaultCode,
+        exception: context.Exception)
+};
+
+var result = await PipelineBuilder
+    .Start(serviceProvider, order, options)
+    .Then<ValidateOrderStep, Order>()
+    .Then<ChargePaymentStep, PaymentReceipt>()
+    .ExecuteAsync();
+```
+
+Observers receive execution and stage metadata through `PipelineExecutionContext` and `PipelineStageContext`.
+This gives consumers a stable place to integrate logging, tracing, metrics, or custom diagnostics.
 
 ### Conditional Branching
 
@@ -219,9 +253,11 @@ public class FlowResult<T>
 {
     public bool IsSuccess { get; }
     public T? Value { get; }
+    public FlowFailure? Failure { get; }
     public string? ErrorMessage { get; }
     public string? ErrorCode { get; }
     public object? ErrorPayload { get; }
+    public Exception? Exception { get; }
 }
 ```
 
@@ -232,7 +268,23 @@ var success = FlowResult<int>.Success(42);
 var failure = FlowResult<int>.Fail("Something went wrong", "ERROR_CODE");
 ```
 
+`Failure` is the canonical structured error object. The legacy `ErrorMessage`, `ErrorCode`, `ErrorPayload`, and `Exception` properties remain available as convenient accessors over the same failure data.
 `ErrorPayload` can store any additional error object, including custom records, domain error models, enums, or other application-specific types.
+When a pipeline step or action throws, the resulting failed `FlowResult` also preserves the original exception in `Exception`.
+
+### FlowFailure
+
+`FlowFailure` groups the full diagnostic picture for a failed result:
+
+```csharp
+public sealed class FlowFailure
+{
+    public string Message { get; }
+    public string? Code { get; }
+    public object? Payload { get; }
+    public Exception? Exception { get; }
+}
+```
 
 ### Pipeline Steps
 
@@ -345,6 +397,19 @@ if (result.TryGetError<Order, ValidationError>(out var error))
 }
 ```
 
+You can also create a fully structured failure when a step needs both domain diagnostics and the original exception:
+
+```csharp
+var failure = new FlowFailure(
+    "Order validation failed",
+    "ORDER_VALIDATION_FAILED",
+    new ValidationError { Field = "Email" },
+    new InvalidOperationException("Validator returned an unexpected state")
+);
+
+var result = FlowResult<Order>.Fail(failure);
+```
+
 ### Exception Handling
 
 All exceptions thrown in pipeline steps are automatically caught and converted to `FlowResult.Fail`:
@@ -360,9 +425,38 @@ var result = await PipelineBuilder
 
 Console.WriteLine(result.IsSuccess); // false
 Console.WriteLine(result.ErrorMessage); // "Step execution failed: Something went wrong"
+Console.WriteLine(result.Exception is InvalidOperationException); // true
 ```
 
+You can also create an exception-backed failure directly:
+
+```csharp
+var failure = FlowResult<Order>.FailFromException(
+    "Payment gateway call failed",
+    new HttpRequestException("Gateway unavailable"),
+    "PAYMENT_GATEWAY_ERROR"
+);
+```
+
+The original exception instance is preserved in `FlowResult.Exception`, so callers can inspect the exception type, stack trace, and nested exception details without parsing the message string.
 `OperationCanceledException` and `TaskCanceledException` are not wrapped. If the supplied `CancellationToken` is canceled, cancellation is propagated to the caller.
+
+### Throw vs Fail
+
+- Return `FlowResult.Fail(...)` for expected business or validation failures that callers should handle as part of normal control flow.
+- Throw exceptions for unexpected infrastructure or programming failures; FlowPipeline will preserve the original exception and convert it into a failed result.
+- If a failure needs both domain payload and exception diagnostics, use `FlowResult.Fail(message, payload, errorCode, exception)` or `FlowResult.Fail(new FlowFailure(...))`.
+
+## Thread Safety
+
+- A `Pipeline<T>` instance is safe to reuse across multiple `ExecuteAsync()` calls because each execution carries its own execution context.
+- When a service provider is supplied, each `ExecuteAsync()` call creates a fresh DI scope and shares it across all DI-resolved stages in that run.
+- Step implementations still need to obey the thread-safety rules of their own dependencies and chosen service lifetimes.
+
+## Examples And Benchmarks
+
+- See `examples/OrderWorkflowExample` for a realistic workflow using observers, retries, and structured failures.
+- Run `dotnet run -c Release --project benchmarks/FlowPipeline.Benchmarks/FlowPipeline.Benchmarks.csproj` to measure representative scenarios.
 
 ## Best Practices
 

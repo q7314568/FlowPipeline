@@ -10,18 +10,26 @@ namespace FlowPipeline.Core;
 public class Pipeline<TIn>
 {
     private readonly IServiceProvider? _serviceProvider;
-    private readonly Func<IServiceProvider?, CancellationToken, Task<FlowResult<TIn>>> _pipeline;
+    private readonly PipelineOptions _options;
+    private readonly int _stageCount;
+    private readonly Func<PipelineExecutionState, CancellationToken, Task<FlowResult<TIn>>> _pipeline;
 
     /// <summary>
     /// 初始化 <see cref="Pipeline{TIn}"/> 類別的新執行節點。
     /// </summary>
     /// <param name="serviceProvider">提供 DI 解析能力的服務提供者。</param>
+    /// <param name="options">Pipeline 執行選項。</param>
+    /// <param name="stageCount">目前已建立的階段數。</param>
     /// <param name="pipeline">封裝目前 Pipeline 執行流程的委派。</param>
     internal Pipeline(
         IServiceProvider? serviceProvider,
-        Func<IServiceProvider?, CancellationToken, Task<FlowResult<TIn>>> pipeline)
+        PipelineOptions? options,
+        int stageCount,
+        Func<PipelineExecutionState, CancellationToken, Task<FlowResult<TIn>>> pipeline)
     {
         _serviceProvider = serviceProvider;
+        _options = options ?? new PipelineOptions();
+        _stageCount = stageCount;
         _pipeline = pipeline;
     }
 
@@ -34,11 +42,13 @@ public class Pipeline<TIn>
     public Pipeline<TOut> Then<TStep, TOut>()
         where TStep : IPipelineStep<TIn, TOut>
     {
-        return CreateStepStage<TOut>(async (input, serviceProvider, ct) =>
-        {
-            var step = ResolveRequired<TStep>(serviceProvider);
-            return await step.ProcessAsync(input, ct);
-        });
+        return CreateStepStage(
+            typeof(TStep).Name,
+            async (input, serviceProvider, ct) =>
+            {
+                var step = ResolveRequired<TStep>(serviceProvider);
+                return await step.ProcessAsync(input, ct);
+            });
     }
 
     /// <summary>
@@ -49,7 +59,9 @@ public class Pipeline<TIn>
     /// <returns>下一階段的 Pipeline。</returns>
     public Pipeline<TOut> Then<TOut>(IPipelineStep<TIn, TOut> stepInstance)
     {
-        return CreateStepStage<TOut>((input, _, ct) => stepInstance.ProcessAsync(input, ct));
+        ArgumentNullException.ThrowIfNull(stepInstance);
+
+        return CreateStepStage(stepInstance.GetType().Name, (input, _, ct) => stepInstance.ProcessAsync(input, ct));
     }
 
     /// <summary>
@@ -60,7 +72,9 @@ public class Pipeline<TIn>
     /// <returns>下一階段的 Pipeline。</returns>
     public Pipeline<TOut> Then<TOut>(Func<TIn, CancellationToken, Task<FlowResult<TOut>>> next)
     {
-        return CreateStepStage<TOut>((input, _, ct) => next(input, ct));
+        ArgumentNullException.ThrowIfNull(next);
+
+        return CreateStepStage(GetDelegateName(next, "LambdaStep"), (input, _, ct) => next(input, ct));
     }
 
     /// <summary>
@@ -75,7 +89,11 @@ public class Pipeline<TIn>
         IParameterizedPipelineStep<TIn, TOut, TParam> stepInstance,
         TParam parameter)
     {
-        return CreateStepStage<TOut>((input, _, ct) => stepInstance.ProcessAsync(input, parameter, ct));
+        ArgumentNullException.ThrowIfNull(stepInstance);
+
+        return CreateStepStage(
+            stepInstance.GetType().Name,
+            (input, _, ct) => stepInstance.ProcessAsync(input, parameter, ct));
     }
 
     /// <summary>
@@ -90,7 +108,11 @@ public class Pipeline<TIn>
         Func<TIn, TParam, CancellationToken, Task<FlowResult<TOut>>> func,
         TParam parameter)
     {
-        return CreateStepStage<TOut>((input, _, ct) => func(input, parameter, ct));
+        ArgumentNullException.ThrowIfNull(func);
+
+        return CreateStepStage(
+            GetDelegateName(func, "LambdaStepWithParam"),
+            (input, _, ct) => func(input, parameter, ct));
     }
 
     /// <summary>
@@ -103,16 +125,20 @@ public class Pipeline<TIn>
     public Pipeline<TOut> ThenWhen<TStep, TOut>(Func<TIn, bool> predicate)
         where TStep : IPipelineStep<TIn, TOut>
     {
-        return CreateStepStage<TOut>(async (input, serviceProvider, ct) =>
-        {
-            if (!predicate(input))
-            {
-                return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
-            }
+        ArgumentNullException.ThrowIfNull(predicate);
 
-            var step = ResolveRequired<TStep>(serviceProvider);
-            return await step.ProcessAsync(input, ct);
-        });
+        return CreateStepStage(
+            $"Conditional:{typeof(TStep).Name}",
+            async (input, serviceProvider, ct) =>
+            {
+                if (!predicate(input))
+                {
+                    return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
+                }
+
+                var step = ResolveRequired<TStep>(serviceProvider);
+                return await step.ProcessAsync(input, ct);
+            });
     }
 
     /// <summary>
@@ -126,15 +152,20 @@ public class Pipeline<TIn>
         Func<TIn, bool> predicate,
         Func<TIn, CancellationToken, Task<FlowResult<TOut>>> next)
     {
-        return CreateStepStage<TOut>(async (input, _, ct) =>
-        {
-            if (!predicate(input))
-            {
-                return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
-            }
+        ArgumentNullException.ThrowIfNull(predicate);
+        ArgumentNullException.ThrowIfNull(next);
 
-            return await next(input, ct);
-        });
+        return CreateStepStage(
+            $"Conditional:{GetDelegateName(next, "LambdaStep")}",
+            async (input, _, ct) =>
+            {
+                if (!predicate(input))
+                {
+                    return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
+                }
+
+                return await next(input, ct);
+            });
     }
 
     /// <summary>
@@ -146,11 +177,13 @@ public class Pipeline<TIn>
     public Pipeline<TIn> ThenDo<TStep>()
         where TStep : IPipelineAction<TIn>
     {
-        return CreateActionStage(async (input, serviceProvider, ct) =>
-        {
-            var action = ResolveRequired<TStep>(serviceProvider);
-            await action.ExecuteAsync(input, ct);
-        });
+        return CreateActionStage(
+            typeof(TStep).Name,
+            async (input, serviceProvider, ct) =>
+            {
+                var action = ResolveRequired<TStep>(serviceProvider);
+                await action.ExecuteAsync(input, ct);
+            });
     }
 
     /// <summary>
@@ -161,7 +194,9 @@ public class Pipeline<TIn>
     /// <returns>相同的 Pipeline 實例。</returns>
     public Pipeline<TIn> ThenDo(IPipelineAction<TIn> actionInstance)
     {
-        return CreateActionStage((input, _, ct) => actionInstance.ExecuteAsync(input, ct));
+        ArgumentNullException.ThrowIfNull(actionInstance);
+
+        return CreateActionStage(actionInstance.GetType().Name, (input, _, ct) => actionInstance.ExecuteAsync(input, ct));
     }
 
     /// <summary>
@@ -172,7 +207,9 @@ public class Pipeline<TIn>
     /// <returns>相同的 Pipeline 實例。</returns>
     public Pipeline<TIn> ThenDo(Func<TIn, CancellationToken, Task> action)
     {
-        return CreateActionStage((input, _, ct) => action(input, ct));
+        ArgumentNullException.ThrowIfNull(action);
+
+        return CreateActionStage(GetDelegateName(action, "LambdaAction"), (input, _, ct) => action(input, ct));
     }
 
     /// <summary>
@@ -184,11 +221,13 @@ public class Pipeline<TIn>
     public Pipeline<TIn> ThenRun<TStep>()
         where TStep : IPipelineAction
     {
-        return CreateActionStage(async (_, serviceProvider, ct) =>
-        {
-            var action = ResolveRequired<TStep>(serviceProvider);
-            await action.ExecuteAsync(ct);
-        });
+        return CreateActionStage(
+            typeof(TStep).Name,
+            async (_, serviceProvider, ct) =>
+            {
+                var action = ResolveRequired<TStep>(serviceProvider);
+                await action.ExecuteAsync(ct);
+            });
     }
 
     /// <summary>
@@ -199,7 +238,9 @@ public class Pipeline<TIn>
     /// <returns>相同的 Pipeline 實例。</returns>
     public Pipeline<TIn> ThenRun(IPipelineAction actionInstance)
     {
-        return CreateActionStage((_, _, ct) => actionInstance.ExecuteAsync(ct));
+        ArgumentNullException.ThrowIfNull(actionInstance);
+
+        return CreateActionStage(actionInstance.GetType().Name, (_, _, ct) => actionInstance.ExecuteAsync(ct));
     }
 
     /// <summary>
@@ -210,7 +251,9 @@ public class Pipeline<TIn>
     /// <returns>相同的 Pipeline 實例。</returns>
     public Pipeline<TIn> ThenRun(Func<CancellationToken, Task> action)
     {
-        return CreateActionStage((_, _, ct) => action(ct));
+        ArgumentNullException.ThrowIfNull(action);
+
+        return CreateActionStage(GetDelegateName(action, "LambdaAction"), (_, _, ct) => action(ct));
     }
 
     /// <summary>
@@ -220,79 +263,330 @@ public class Pipeline<TIn>
     /// <returns>代表非同步操作的工作，包含最終結果。</returns>
     public async Task<FlowResult<TIn>> ExecuteAsync(CancellationToken ct = default)
     {
-        if (_serviceProvider == null)
-        {
-            return await _pipeline(null, ct);
-        }
+        var executionContext = new PipelineExecutionContext(
+            Guid.NewGuid(),
+            _options.Name ?? typeof(TIn).Name,
+            _stageCount);
 
-        using var executionScope = _serviceProvider.CreateScope();
-        return await _pipeline(executionScope.ServiceProvider, ct);
+        await NotifyExecutionStartedAsync(executionContext, ct);
+
+        try
+        {
+            FlowResult<TIn> result;
+
+            if (_serviceProvider == null)
+            {
+                result = await _pipeline(new PipelineExecutionState(null, executionContext), ct);
+            }
+            else
+            {
+                using var executionScope = _serviceProvider.CreateScope();
+                result = await _pipeline(new PipelineExecutionState(executionScope.ServiceProvider, executionContext), ct);
+            }
+
+            await NotifyExecutionCompletedAsync(executionContext, result.Failure, ct);
+            return result;
+        }
+        catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
+        {
+            await NotifyExecutionCompletedAsync(
+                executionContext,
+                new FlowFailure("Pipeline execution cancelled", "PIPELINE_CANCELLED", exception: ex),
+                CancellationToken.None);
+            throw;
+        }
     }
 
     /// <summary>
     /// 建立新的步驟節點，並在前一階段成功時執行下一個轉換。
     /// </summary>
     /// <typeparam name="TOut">下一階段的輸出型別。</typeparam>
+    /// <param name="stageName">階段名稱。</param>
     /// <param name="next">實際執行下一階段的委派。</param>
     /// <returns>代表下一階段的新 Pipeline。</returns>
     private Pipeline<TOut> CreateStepStage<TOut>(
+        string stageName,
         Func<TIn, IServiceProvider?, CancellationToken, Task<FlowResult<TOut>>> next)
     {
-        return new Pipeline<TOut>(_serviceProvider, async (serviceProvider, ct) =>
+        var stageIndex = _stageCount + 1;
+
+        return new Pipeline<TOut>(_serviceProvider, _options, stageIndex, async (state, ct) =>
         {
-            var result = await _pipeline(serviceProvider, ct);
+            var result = await _pipeline(state, ct);
 
             if (!result.IsSuccess)
             {
                 return FlowResult<TOut>.FromFailure(result);
             }
 
-            try
-            {
-                return await next(result.Value!, serviceProvider, ct);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                return FlowResult<TOut>.Fail($"Step execution failed: {ex.Message}", "STEP_EXCEPTION");
-            }
+            return await ExecuteStageWithPoliciesAsync(
+                state,
+                stageIndex,
+                stageName,
+                PipelineStageKind.Step,
+                typeof(TIn),
+                typeof(TOut),
+                ct,
+                stageCt => next(result.Value!, state.ServiceProvider, stageCt),
+                "STEP_EXCEPTION",
+                "Step execution failed");
         });
     }
 
     /// <summary>
     /// 建立新的副作用節點，並在前一階段成功時執行指定動作。
     /// </summary>
+    /// <param name="stageName">階段名稱。</param>
     /// <param name="action">實際執行副作用的委派。</param>
     /// <returns>維持相同輸入型別的 Pipeline。</returns>
     private Pipeline<TIn> CreateActionStage(
+        string stageName,
         Func<TIn, IServiceProvider?, CancellationToken, Task> action)
     {
-        return new Pipeline<TIn>(_serviceProvider, async (serviceProvider, ct) =>
+        var stageIndex = _stageCount + 1;
+
+        return new Pipeline<TIn>(_serviceProvider, _options, stageIndex, async (state, ct) =>
         {
-            var result = await _pipeline(serviceProvider, ct);
+            var result = await _pipeline(state, ct);
 
             if (!result.IsSuccess)
             {
                 return result;
             }
 
+            return await ExecuteStageWithPoliciesAsync(
+                state,
+                stageIndex,
+                stageName,
+                PipelineStageKind.Action,
+                typeof(TIn),
+                typeof(TIn),
+                ct,
+                async stageCt =>
+                {
+                    await action(result.Value!, state.ServiceProvider, stageCt);
+                    return result;
+                },
+                "ACTION_EXCEPTION",
+                "Action execution failed");
+        });
+    }
+
+    private async Task<FlowResult<TOut>> ExecuteStageWithPoliciesAsync<TOut>(
+        PipelineExecutionState state,
+        int stageIndex,
+        string stageName,
+        PipelineStageKind stageKind,
+        Type inputType,
+        Type outputType,
+        CancellationToken ct,
+        Func<CancellationToken, Task<FlowResult<TOut>>> operation,
+        string defaultCode,
+        string defaultMessagePrefix)
+    {
+        var retryOptions = _options.Retry;
+        var maxAttempts = Math.Max(retryOptions?.MaxAttempts ?? 1, 1);
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var stageContext = new PipelineStageContext(
+                state.Execution,
+                stageIndex,
+                stageName,
+                stageKind,
+                inputType,
+                outputType,
+                attempt,
+                _options.StageTimeout);
+
+            await NotifyStageStartedAsync(stageContext, ct);
+
             try
             {
-                await action(result.Value!, serviceProvider, ct);
+                var result = await ExecuteWithTimeoutAsync(operation, stageContext, ct);
+
+                await NotifyStageCompletedAsync(stageContext, result.Failure, ct);
+
+                if (!result.IsSuccess &&
+                    attempt < maxAttempts &&
+                    result.Failure != null &&
+                    ShouldRetryFailure(retryOptions, result.Failure))
+                {
+                    await DelayBeforeRetryAsync(retryOptions, ct);
+                    continue;
+                }
+
                 return result;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
             }
+            catch (TimeoutException ex)
+            {
+                var failure = MapFailure(
+                    stageContext,
+                    ex,
+                    $"{stageName} timed out after {_options.StageTimeout}.",
+                    "STAGE_TIMEOUT",
+                    isTimeout: true);
+
+                await NotifyStageCompletedAsync(stageContext, failure, ct);
+
+                if (attempt < maxAttempts && ShouldRetryFailure(retryOptions, failure))
+                {
+                    await DelayBeforeRetryAsync(retryOptions, ct);
+                    continue;
+                }
+
+                return FlowResult<TOut>.Fail(failure);
+            }
             catch (Exception ex)
             {
-                return FlowResult<TIn>.Fail($"Action execution failed: {ex.Message}", "ACTION_EXCEPTION");
+                var failure = MapFailure(
+                    stageContext,
+                    ex,
+                    $"{defaultMessagePrefix}: {ex.Message}",
+                    defaultCode,
+                    isTimeout: false);
+
+                await NotifyStageCompletedAsync(stageContext, failure, ct);
+
+                if (attempt < maxAttempts && ShouldRetryException(retryOptions, ex))
+                {
+                    await DelayBeforeRetryAsync(retryOptions, ct);
+                    continue;
+                }
+
+                return FlowResult<TOut>.Fail(failure);
             }
-        });
+        }
+
+        throw new InvalidOperationException("Stage execution ended without a terminal result.");
+    }
+
+    private async Task<FlowResult<TOut>> ExecuteWithTimeoutAsync<TOut>(
+        Func<CancellationToken, Task<FlowResult<TOut>>> operation,
+        PipelineStageContext stageContext,
+        CancellationToken ct)
+    {
+        if (_options.StageTimeout is not { } timeout)
+        {
+            return await operation(ct);
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+
+        try
+        {
+            return await operation(timeoutCts.Token);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            throw new TimeoutException($"{stageContext.StageName} timed out after {timeout}.", ex);
+        }
+    }
+
+    private FlowFailure MapFailure(
+        PipelineStageContext stageContext,
+        Exception exception,
+        string defaultMessage,
+        string defaultCode,
+        bool isTimeout)
+    {
+        var context = new PipelineFailureMappingContext(stageContext, exception, defaultMessage, defaultCode, isTimeout);
+        return _options.FailureMapper?.Invoke(context) ?? new FlowFailure(defaultMessage, defaultCode, exception: exception);
+    }
+
+    private async Task NotifyExecutionStartedAsync(PipelineExecutionContext context, CancellationToken ct)
+    {
+        foreach (var observer in _options.Observers)
+        {
+            try
+            {
+                await observer.OnExecutionStartedAsync(context, ct);
+            }
+            catch
+            {
+                // Observability hooks should not break business execution.
+            }
+        }
+    }
+
+    private async Task NotifyExecutionCompletedAsync(PipelineExecutionContext context, FlowFailure? failure, CancellationToken ct)
+    {
+        foreach (var observer in _options.Observers)
+        {
+            try
+            {
+                await observer.OnExecutionCompletedAsync(context, failure, ct);
+            }
+            catch
+            {
+                // Observability hooks should not break business execution.
+            }
+        }
+    }
+
+    private async Task NotifyStageStartedAsync(PipelineStageContext context, CancellationToken ct)
+    {
+        foreach (var observer in _options.Observers)
+        {
+            try
+            {
+                await observer.OnStageStartedAsync(context, ct);
+            }
+            catch
+            {
+                // Observability hooks should not break business execution.
+            }
+        }
+    }
+
+    private async Task NotifyStageCompletedAsync(PipelineStageContext context, FlowFailure? failure, CancellationToken ct)
+    {
+        foreach (var observer in _options.Observers)
+        {
+            try
+            {
+                await observer.OnStageCompletedAsync(context, failure, ct);
+            }
+            catch
+            {
+                // Observability hooks should not break business execution.
+            }
+        }
+    }
+
+    private static bool ShouldRetryException(PipelineRetryOptions? retryOptions, Exception exception)
+    {
+        if (retryOptions == null || exception is OperationCanceledException)
+        {
+            return false;
+        }
+
+        return retryOptions.ShouldRetryException?.Invoke(exception) ?? true;
+    }
+
+    private static bool ShouldRetryFailure(PipelineRetryOptions? retryOptions, FlowFailure failure)
+    {
+        if (retryOptions == null)
+        {
+            return false;
+        }
+
+        return retryOptions.ShouldRetryFailure?.Invoke(failure) ?? false;
+    }
+
+    private static async Task DelayBeforeRetryAsync(PipelineRetryOptions? retryOptions, CancellationToken ct)
+    {
+        if (retryOptions == null || retryOptions.Delay <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        await Task.Delay(retryOptions.Delay, ct);
     }
 
     /// <summary>
@@ -311,5 +605,11 @@ public class Pipeline<TIn>
         }
 
         return serviceProvider.GetRequiredService<TService>();
+    }
+
+    private static string GetDelegateName(Delegate del, string fallback)
+    {
+        var methodName = del.Method.Name;
+        return methodName.StartsWith("<", StringComparison.Ordinal) ? fallback : methodName;
     }
 }
