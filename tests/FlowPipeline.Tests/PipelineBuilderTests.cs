@@ -73,6 +73,9 @@ public class PipelineBuilderTests
         Assert.False(result.IsSuccess);
         Assert.Contains("Test exception", result.ErrorMessage);
         Assert.Equal("STEP_EXCEPTION", result.ErrorCode);
+        Assert.NotNull(result.Exception);
+        Assert.IsType<InvalidOperationException>(result.Exception);
+        Assert.Equal("Test exception", result.Exception!.Message);
     }
 
     [Fact]
@@ -242,6 +245,89 @@ public class PipelineBuilderTests
         Assert.Equal("TEST_CODE", result.ErrorCode);
         Assert.NotNull(result.ErrorPayload);
         Assert.IsType<TestError>(result.ErrorPayload);
+        Assert.Null(result.Exception);
+        Assert.NotNull(result.Failure);
+        Assert.Equal("Test error", result.Failure!.Message);
+        Assert.Equal("TEST_CODE", result.Failure.Code);
+    }
+
+    [Fact]
+    public void FlowResult_Fail_WithException_ShouldStoreOriginalException()
+    {
+        // Arrange
+        var exception = new InvalidOperationException("Boom");
+
+        // Act
+        var result = FlowResult<int>.FailFromException("Step failed", exception, "STEP_EXCEPTION");
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("STEP_EXCEPTION", result.ErrorCode);
+        Assert.Same(exception, result.Exception);
+        Assert.NotNull(result.Failure);
+        Assert.Same(exception, result.Failure!.Exception);
+    }
+
+    [Fact]
+    public void FlowResult_Fail_WithStructuredFailure_ShouldPreserveAllFailureDetails()
+    {
+        // Arrange
+        var inner = new InvalidOperationException("Inner");
+        var exception = new ApplicationException("Outer", inner);
+        var payload = new TestError
+        {
+            Message = "Structured",
+            Code = "STRUCTURED",
+            TestProperty = "Payload"
+        };
+        var failure = new FlowFailure("Structured failure", "STRUCTURED_ERROR", payload, exception);
+
+        // Act
+        var result = FlowResult<int>.Fail(failure);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Same(failure, result.Failure);
+        Assert.Equal("Structured failure", result.ErrorMessage);
+        Assert.Equal("STRUCTURED_ERROR", result.ErrorCode);
+        Assert.Same(payload, result.ErrorPayload);
+        Assert.Same(exception, result.Exception);
+    }
+
+    [Fact]
+    public void FlowResult_Fail_WithPayloadAndException_ShouldStoreCombinedDiagnostics()
+    {
+        // Arrange
+        var exception = new InvalidOperationException("Payload exception");
+        var payload = new TestError
+        {
+            Message = "Combined",
+            Code = "COMBINED",
+            TestProperty = "PayloadAndException"
+        };
+
+        // Act
+        var result = FlowResult<int>.Fail("Combined failure", payload, "COMBINED_ERROR", exception);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.NotNull(result.Failure);
+        Assert.Equal("Combined failure", result.Failure!.Message);
+        Assert.Equal("COMBINED_ERROR", result.Failure.Code);
+        Assert.Same(payload, result.Failure.Payload);
+        Assert.Same(exception, result.Failure.Exception);
+    }
+
+    [Fact]
+    public void FlowResult_Fail_WhenMessageIsWhitespace_ShouldThrow()
+    {
+        Assert.Throws<ArgumentException>(() => FlowResult<int>.Fail(" "));
+    }
+
+    [Fact]
+    public void FlowResult_Fail_WithNullFailure_ShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() => FlowResult<int>.Fail((FlowFailure)null!));
     }
 
     [Fact]
@@ -322,6 +408,210 @@ public class PipelineBuilderTests
         Assert.Equal("VALIDATION_ERROR", result.ErrorCode);
         Assert.True(result.TryGetError<string, TestError>(out var error));
         Assert.Equal("PayloadValue", error!.TestProperty);
+    }
+
+    [Fact]
+    public async Task FailureException_ShouldBePreservedAcrossShortCircuit()
+    {
+        // Arrange
+        var exception = new InvalidOperationException("Validation blew up");
+
+        // Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 10)
+            .Then((value, ct) => Task.FromResult(FlowResult<int>.FailFromException("Validation failed", exception, "VALIDATION_ERROR")))
+            .Then(async (value, ct) => FlowResult<string>.Success($"Value: {value}"))
+            .ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("VALIDATION_ERROR", result.ErrorCode);
+        Assert.Same(exception, result.Exception);
+        Assert.NotNull(result.Failure);
+    }
+
+    [Fact]
+    public async Task Pipeline_Observers_ShouldReceiveExecutionAndStageMetadata()
+    {
+        // Arrange
+        var observer = new TestObserver();
+        var options = new PipelineOptions
+        {
+            Name = "ObservedPipeline",
+            Observers = new[] { observer }
+        };
+
+        // Act
+        var result = await PipelineBuilder
+            .Start(null, 10, options)
+            .Then(async (value, ct) => FlowResult<int>.Success(value + 5))
+            .ThenDo(async (value, ct) => await Task.CompletedTask)
+            .ExecuteAsync();
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Single(observer.ExecutionStarted);
+        Assert.Single(observer.ExecutionCompleted);
+        Assert.Equal(2, observer.StageStarted.Count);
+        Assert.Equal(2, observer.StageCompleted.Count);
+        Assert.All(observer.StageStarted, context => Assert.Equal("ObservedPipeline", context.Execution.PipelineName));
+        Assert.Collection(
+            observer.StageStarted.OrderBy(x => x.StageIndex),
+            first =>
+            {
+                Assert.Equal(1, first.StageIndex);
+                Assert.Equal(PipelineStageKind.Step, first.StageKind);
+                Assert.Equal(typeof(int), first.InputType);
+                Assert.Equal(typeof(int), first.OutputType);
+                Assert.Equal(1, first.Attempt);
+            },
+            second =>
+            {
+                Assert.Equal(2, second.StageIndex);
+                Assert.Equal(PipelineStageKind.Action, second.StageKind);
+                Assert.Equal(typeof(int), second.InputType);
+                Assert.Equal(typeof(int), second.OutputType);
+                Assert.Equal(1, second.Attempt);
+            });
+        Assert.Equal(observer.ExecutionStarted[0].ExecutionId, observer.ExecutionCompleted[0].ExecutionId);
+    }
+
+    [Fact]
+    public async Task Pipeline_RetryPolicy_ShouldRetryOnExceptionAndEventuallySucceed()
+    {
+        // Arrange
+        var attempts = 0;
+        var options = new PipelineOptions
+        {
+            Retry = new PipelineRetryOptions
+            {
+                MaxAttempts = 3,
+                ShouldRetryException = ex => ex is InvalidOperationException
+            }
+        };
+
+        // Act
+        var result = await PipelineBuilder
+            .Start(null, 1, options)
+            .Then<int>(async (value, ct) =>
+            {
+                attempts++;
+                if (attempts < 3)
+                {
+                    throw new InvalidOperationException($"Attempt {attempts}");
+                }
+
+                return FlowResult<int>.Success(value + attempts);
+            })
+            .ExecuteAsync();
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(4, result.Value);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task Pipeline_RetryPolicy_ShouldRetryOnFlowFailureAndEventuallySucceed()
+    {
+        // Arrange
+        var attempts = 0;
+        var options = new PipelineOptions
+        {
+            Retry = new PipelineRetryOptions
+            {
+                MaxAttempts = 3,
+                ShouldRetryFailure = failure => failure.Code == "TRANSIENT"
+            }
+        };
+
+        // Act
+        var result = await PipelineBuilder
+            .Start(null, 5, options)
+            .Then(async (value, ct) =>
+            {
+                attempts++;
+                return attempts < 3
+                    ? FlowResult<int>.Fail("Temporary issue", "TRANSIENT")
+                    : FlowResult<int>.Success(value * 2);
+            })
+            .ExecuteAsync();
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(10, result.Value);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task Pipeline_StageTimeout_ShouldReturnTimeoutFailure()
+    {
+        // Arrange
+        var options = new PipelineOptions
+        {
+            StageTimeout = TimeSpan.FromMilliseconds(20)
+        };
+
+        // Act
+        var result = await PipelineBuilder
+            .Start(null, 5, options)
+            .Then(async (value, ct) =>
+            {
+                await Task.Delay(100, ct);
+                return FlowResult<int>.Success(value);
+            })
+            .ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("STAGE_TIMEOUT", result.ErrorCode);
+        Assert.NotNull(result.Exception);
+        Assert.IsType<TimeoutException>(result.Exception);
+    }
+
+    [Fact]
+    public async Task Pipeline_FailureMapper_ShouldCustomizeMappedFailure()
+    {
+        // Arrange
+        var options = new PipelineOptions
+        {
+            FailureMapper = context => new FlowFailure(
+                $"{context.Stage.StageName}:{context.Exception.Message}",
+                $"MAPPED_{context.DefaultCode}",
+                exception: context.Exception)
+        };
+
+        // Act
+        var result = await PipelineBuilder
+            .Start(null, 5, options)
+            .Then<int>(async (value, ct) => throw new InvalidOperationException("Boom"))
+            .ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal("MAPPED_STEP_EXCEPTION", result.ErrorCode);
+        Assert.Contains("Boom", result.ErrorMessage);
+        Assert.NotNull(result.Exception);
+    }
+
+    [Fact]
+    public async Task Pipeline_WhenObserverThrows_ShouldNotBreakExecution()
+    {
+        // Arrange
+        var options = new PipelineOptions
+        {
+            Observers = new IPipelineObserver[] { new ThrowingObserver() }
+        };
+
+        // Act
+        var result = await PipelineBuilder
+            .Start(null, 5, options)
+            .Then(async (value, ct) => FlowResult<int>.Success(value + 1))
+            .ExecuteAsync();
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(6, result.Value);
     }
 
     [Fact]
@@ -466,6 +756,30 @@ public class PipelineBuilderTests
         Assert.False(result.IsSuccess);
         Assert.Contains("Cannot divide by zero", result.ErrorMessage);
         Assert.Equal("STEP_EXCEPTION", result.ErrorCode);
+        Assert.NotNull(result.Exception);
+        Assert.IsType<DivideByZeroException>(result.Exception);
+    }
+
+    [Fact]
+    public async Task Pipeline_WithNestedException_ShouldPreserveExceptionHierarchy()
+    {
+        // Act
+        var result = await PipelineBuilder<int>
+            .Start(null, 5)
+            .Then<int>(async (value, ct) =>
+            {
+                throw new InvalidOperationException("Outer failure", new ArgumentException("Inner failure"));
+            })
+            .ExecuteAsync();
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.NotNull(result.Exception);
+        Assert.Equal("Outer failure", result.Exception!.Message);
+        Assert.NotNull(result.Exception.InnerException);
+        Assert.Equal("Inner failure", result.Exception.InnerException!.Message);
+        Assert.NotNull(result.Failure);
+        Assert.Same(result.Exception, result.Failure!.Exception);
     }
 
     [Fact]
@@ -582,6 +896,49 @@ public class TestAction : IPipelineAction<int>
     {
         _action();
         return Task.CompletedTask;
+    }
+}
+
+public sealed class TestObserver : IPipelineObserver
+{
+    public List<PipelineExecutionContext> ExecutionStarted { get; } = new();
+
+    public List<PipelineExecutionContext> ExecutionCompleted { get; } = new();
+
+    public List<PipelineStageContext> StageStarted { get; } = new();
+
+    public List<PipelineStageContext> StageCompleted { get; } = new();
+
+    public ValueTask OnExecutionStartedAsync(PipelineExecutionContext context, CancellationToken ct = default)
+    {
+        ExecutionStarted.Add(context);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnExecutionCompletedAsync(PipelineExecutionContext context, FlowFailure? failure, CancellationToken ct = default)
+    {
+        ExecutionCompleted.Add(context);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnStageStartedAsync(PipelineStageContext context, CancellationToken ct = default)
+    {
+        StageStarted.Add(context);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnStageCompletedAsync(PipelineStageContext context, FlowFailure? failure, CancellationToken ct = default)
+    {
+        StageCompleted.Add(context);
+        return ValueTask.CompletedTask;
+    }
+}
+
+public sealed class ThrowingObserver : IPipelineObserver
+{
+    public ValueTask OnExecutionStartedAsync(PipelineExecutionContext context, CancellationToken ct = default)
+    {
+        throw new InvalidOperationException("Observer failure");
     }
 }
 

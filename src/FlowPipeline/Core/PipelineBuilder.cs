@@ -13,20 +13,22 @@ public static class PipelineBuilder
     /// <typeparam name="T">輸入型別。</typeparam>
     /// <param name="provider">用於依賴注入的選用 Service Provider。</param>
     /// <param name="input">初始輸入值。</param>
+    /// <param name="options">Pipeline 執行選項。</param>
     /// <returns>新的 Pipeline 實例。</returns>
-    public static Pipeline<T> Start<T>(IServiceProvider? provider, T input)
+    public static Pipeline<T> Start<T>(IServiceProvider? provider, T input, PipelineOptions? options = null)
     {
-        return new Pipeline<T>(provider, (_, _) => Task.FromResult(FlowResult<T>.Success(input)));
+        return new Pipeline<T>(provider, options, 0, (_, _) => Task.FromResult(FlowResult<T>.Success(input)));
     }
 
     /// <summary>
     /// 建立一個無輸入的新 Pipeline（使用 Unit）。
     /// </summary>
     /// <param name="provider">用於依賴注入的選用 Service Provider。</param>
+    /// <param name="options">Pipeline 執行選項。</param>
     /// <returns>新的 Pipeline 實例。</returns>
-    public static Pipeline<Unit> Start(IServiceProvider? provider)
+    public static Pipeline<Unit> Start(IServiceProvider? provider, PipelineOptions? options = null)
     {
-        return Start(provider, Unit.Value);
+        return Start(provider, Unit.Value, options);
     }
 }
 
@@ -39,8 +41,10 @@ public class PipelineBuilder<TIn> : Pipeline<TIn>
 {
     private PipelineBuilder(
         IServiceProvider? serviceProvider,
-        Func<IServiceProvider?, CancellationToken, Task<FlowResult<TIn>>> pipeline)
-        : base(serviceProvider, pipeline)
+        PipelineOptions? options,
+        int stageCount,
+        Func<PipelineExecutionState, CancellationToken, Task<FlowResult<TIn>>> pipeline)
+        : base(serviceProvider, options, stageCount, pipeline)
     {
     }
 
@@ -50,19 +54,21 @@ public class PipelineBuilder<TIn> : Pipeline<TIn>
     /// <typeparam name="T">輸入型別。</typeparam>
     /// <param name="provider">用於依賴注入的選用 Service Provider。</param>
     /// <param name="input">初始輸入值。</param>
+    /// <param name="options">Pipeline 執行選項。</param>
     /// <returns>新的 PipelineBuilder 實例。</returns>
-    public static PipelineBuilder<T> Start<T>(IServiceProvider? provider, T input)
+    public static PipelineBuilder<T> Start<T>(IServiceProvider? provider, T input, PipelineOptions? options = null)
     {
-        return new PipelineBuilder<T>(provider, (_, _) => Task.FromResult(FlowResult<T>.Success(input)));
+        return new PipelineBuilder<T>(provider, options, 0, (_, _) => Task.FromResult(FlowResult<T>.Success(input)));
     }
 
     /// <summary>
     /// 建立一個無輸入的新 Pipeline（使用 Unit）。
     /// </summary>
     /// <param name="provider">用於依賴注入的選用 Service Provider。</param>
+    /// <param name="options">Pipeline 執行選項。</param>
     /// <returns>新的 PipelineBuilder 實例。</returns>
-    public static PipelineBuilder<Unit> Start(IServiceProvider? provider)
+    public static PipelineBuilder<Unit> Start(IServiceProvider? provider, PipelineOptions? options = null)
     {
-        return Start(provider, Unit.Value);
+        return Start(provider, Unit.Value, options);
     }
 }
