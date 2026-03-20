@@ -112,30 +112,38 @@ public class PipelineBuilderTests
             .Start(null, 15)
             .ThenWhen(
                 value => value > 10,
-                async (value, ct) => FlowResult<string>.Success($"Large: {value}")
+                async (value, ct) => FlowResult<int>.Success(value * 2)
             )
             .ExecuteAsync();
 
         // Assert
         Assert.True(result.IsSuccess);
-        Assert.Equal("Large: 15", result.Value);
+        Assert.Equal(30, result.Value);
     }
 
     [Fact]
-    public async Task ConditionalStep_WhenConditionNotMet_ShouldFail()
+    public async Task ConditionalStep_WhenConditionNotMet_ShouldSkipAndContinue()
     {
+        var conditionalExecuted = false;
+
         // Act
         var result = await PipelineBuilder<int>
             .Start(null, 5)
             .ThenWhen(
                 value => value > 10,
-                async (value, ct) => FlowResult<string>.Success($"Large: {value}")
+                async (value, ct) =>
+                {
+                    conditionalExecuted = true;
+                    return FlowResult<int>.Success(value * 2);
+                }
             )
+            .Then(async (value, ct) => FlowResult<int>.Success(value + 3))
             .ExecuteAsync();
 
         // Assert
-        Assert.False(result.IsSuccess);
-        Assert.Equal("Condition not met", result.ErrorMessage);
+        Assert.True(result.IsSuccess);
+        Assert.False(conditionalExecuted);
+        Assert.Equal(8, result.Value);
     }
 
     [Fact]

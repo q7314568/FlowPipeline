@@ -50,8 +50,9 @@ var result4 = await PipelineBuilder
     .Start(null, 15)
     .ThenWhen(
         value => value > 10,
-        async (value, ct) => FlowResult<string>.Success($"Large value: {value}")
+        async (value, ct) => FlowResult<int>.Success(value * 2)
     )
+    .Then(async (value, ct) => FlowResult<int>.Success(value + 5))
     .ExecuteAsync();
 
 Console.WriteLine($"Result: {result4.Value}");

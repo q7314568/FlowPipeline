@@ -42,8 +42,8 @@ FlowPipeline.Core.Pipeline`1
   method FlowPipeline.Core.Pipeline`1[TIn] ThenRun(FlowPipeline.Abstractions.IPipelineAction)
   method FlowPipeline.Core.Pipeline`1[TIn] ThenRun(System.Func`2[System.Threading.CancellationToken,System.Threading.Tasks.Task])
   method FlowPipeline.Core.Pipeline`1[TIn] ThenRun[TStep]()
-  method FlowPipeline.Core.Pipeline`1[TOut] ThenWhen[TOut](System.Func`2[TIn,System.Boolean], System.Func`3[TIn,System.Threading.CancellationToken,System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TOut]]])
-  method FlowPipeline.Core.Pipeline`1[TOut] ThenWhen[TStep,TOut](System.Func`2[TIn,System.Boolean])
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenWhen(System.Func`2[TIn,System.Boolean], System.Func`3[TIn,System.Threading.CancellationToken,System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TIn]]])
+  method FlowPipeline.Core.Pipeline`1[TIn] ThenWhen[TStep](System.Func`2[TIn,System.Boolean])
   method FlowPipeline.Core.Pipeline`1[TOut] ThenWithParam[TOut,TParam](FlowPipeline.Abstractions.IParameterizedPipelineStep`3[TIn,TOut,TParam], TParam)
   method FlowPipeline.Core.Pipeline`1[TOut] ThenWithParam[TOut,TParam](System.Func`4[TIn,TParam,System.Threading.CancellationToken,System.Threading.Tasks.Task`1[FlowPipeline.Core.FlowResult`1[TOut]]], TParam)
 FlowPipeline.Core.PipelineBuilder

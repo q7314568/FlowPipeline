@@ -117,13 +117,13 @@ public class Pipeline<TIn>
 
     /// <summary>
     /// 使用依賴注入新增一個條件式步驟到 Pipeline。
+    /// 條件不成立時會略過此步驟，並將目前值繼續傳遞到後續階段。
     /// </summary>
     /// <typeparam name="TStep">要從 DI 容器解析的步驟型別。</typeparam>
-    /// <typeparam name="TOut">步驟的輸出型別。</typeparam>
     /// <param name="predicate">執行步驟前要檢查的條件。</param>
-    /// <returns>下一階段的 Pipeline。</returns>
-    public Pipeline<TOut> ThenWhen<TStep, TOut>(Func<TIn, bool> predicate)
-        where TStep : IPipelineStep<TIn, TOut>
+    /// <returns>相同型別的下一階段 Pipeline。</returns>
+    public Pipeline<TIn> ThenWhen<TStep>(Func<TIn, bool> predicate)
+        where TStep : IPipelineStep<TIn, TIn>
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
@@ -133,7 +133,7 @@ public class Pipeline<TIn>
             {
                 if (!predicate(input))
                 {
-                    return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
+                    return FlowResult<TIn>.Success(input);
                 }
 
                 var step = ResolveRequired<TStep>(serviceProvider);
@@ -143,14 +143,14 @@ public class Pipeline<TIn>
 
     /// <summary>
     /// 使用 Lambda 函式新增一個條件式步驟到 Pipeline。
+    /// 條件不成立時會略過此步驟，並將目前值繼續傳遞到後續階段。
     /// </summary>
-    /// <typeparam name="TOut">步驟的輸出型別。</typeparam>
     /// <param name="predicate">執行步驟前要檢查的條件。</param>
     /// <param name="next">當條件符合時要執行的函式。</param>
-    /// <returns>下一階段的 Pipeline。</returns>
-    public Pipeline<TOut> ThenWhen<TOut>(
+    /// <returns>相同型別的下一階段 Pipeline。</returns>
+    public Pipeline<TIn> ThenWhen(
         Func<TIn, bool> predicate,
-        Func<TIn, CancellationToken, Task<FlowResult<TOut>>> next)
+        Func<TIn, CancellationToken, Task<FlowResult<TIn>>> next)
     {
         ArgumentNullException.ThrowIfNull(predicate);
         ArgumentNullException.ThrowIfNull(next);
@@ -161,7 +161,7 @@ public class Pipeline<TIn>
             {
                 if (!predicate(input))
                 {
-                    return FlowResult<TOut>.Fail("Condition not met", "CONDITION_FAILED");
+                    return FlowResult<TIn>.Success(input);
                 }
 
                 return await next(input, ct);

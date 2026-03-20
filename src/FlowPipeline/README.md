@@ -126,10 +126,13 @@ var result = await PipelineBuilder
     .Start(null, 15)
     .ThenWhen(
         value => value > 10,
-        async (value, ct) => FlowResult<string>.Success($"Large: {value}")
+        async (value, ct) => FlowResult<int>.Success(value * 2)
     )
+    .Then(async (value, ct) => FlowResult<int>.Success(value + 5))
     .ExecuteAsync();
 ```
+
+`ThenWhen` is a conditional same-type stage. When the predicate returns `false`, the stage is skipped and the current value continues to the next stage unchanged.
 
 ### Parameterized Steps
 
@@ -288,8 +291,8 @@ public interface IPipelineAction
 
 #### Conditional Steps
 
-- `ThenWhen<TStep, TOut>(Func<TIn, bool>)` - Conditional DI step
-- `ThenWhen<TOut>(Func<TIn, bool>, Func<TIn, CancellationToken, Task<FlowResult<TOut>>>)` - Conditional lambda step
+- `ThenWhen<TStep>(Func<TIn, bool>)` - Conditional DI step that keeps the same pipeline value type
+- `ThenWhen(Func<TIn, bool>, Func<TIn, CancellationToken, Task<FlowResult<TIn>>>)` - Conditional lambda step that keeps the same pipeline value type
 
 #### Side Effects with Input
 
@@ -441,10 +444,12 @@ public class OrderProcessingWorkflow
             .ThenDo(async (o, ct) => Console.WriteLine($"Order {o.Id} validated"))
             // Check inventory
             .Then<CheckInventoryStep, InventoryResult>()
-            // Only process payment if inventory is sufficient
-            .ThenWhen<ProcessPaymentStep, PaymentResult>(
+            // Only reserve inventory when it is available; otherwise keep going with the same InventoryResult
+            .ThenWhen<ReserveInventoryStep>(
                 inv => inv.IsAvailable
             )
+            // Process payment after inventory state is finalized
+            .Then<ProcessPaymentStep, PaymentResult>()
             // Send confirmation email
             .ThenRun<SendConfirmationEmailAction>()
             // Map to final result
